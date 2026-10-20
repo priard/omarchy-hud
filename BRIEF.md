@@ -1,101 +1,105 @@
-# omarchy-hud: brief projektu (przekazanie z sesji badawczej, 2026-10-21)
+# omarchy-hud: project brief (handover from the research session, 2026-10-21)
 
-## Cel
-HUD w stylu Ubuntu Unity (2012) dla Omarchy: skrót klawiszowy na aktywnym oknie
-otwiera menu Omarchy z listą wszystkich poleceń z menu TEJ aplikacji, fuzzy search,
-Enter wykonuje polecenie. Docelowo: GTK, GNOME, Qt, KDE i własne aplikacje Omarchy.
+## Goal
+A Ubuntu Unity (2012) style HUD for Omarchy: a key binding on the focused window opens
+the Omarchy menu with every command from THAT app's menus, fuzzy search, Enter runs the
+command. Target: GTK, GNOME, Qt, KDE and Omarchy's own apps.
 
-## Środowisko
-- Omarchy 4.5.0rc1, Hyprland 0.56.2 (konfiguracja w Lua: ~/.local/share/omarchy/default/hypr/,
-  własne zmiany w ~/.config/hypr/)
-- Bindy definiuje się przez `o.bind("SUPER + ALT + X", "Opis", "komenda")`
-  (np. ~/.local/share/omarchy/default/hypr/bindings/utilities.lua)
-- `SUPER + ALT + SPACE` jest ZAJĘTY ("Apps": `omarchy-shell omarchy.dock apps`, utilities.lua:2).
-  Trzeba wybrać inny skrót (propozycja: SUPER + ALT + M) albo świadomie nadpisać ten.
-- Pluginy omarchy-shell mają ograniczone API tylko do odczytu, więc logika ma działać jako
-  osobny proces (CLI), wywoływany z menu lub bindu.
-- Zainstalowane: gtk3, gtk4, qt6-base, kxmlgui, kconfigwidgets, libdbusmenu-glib/gtk3, python3 + gi.
-  Aplikacje testowe: nautilus, xournalpp, evince, obs, libreoffice, pinta, mpv.
+## Environment
+- Omarchy 4.5.0rc1, Hyprland 0.56.2 (Lua config: ~/.local/share/omarchy/default/hypr/,
+  user changes in ~/.config/hypr/)
+- Bindings use `o.bind("SUPER + ALT + X", "Description", "command")`
+  (e.g. ~/.local/share/omarchy/default/hypr/bindings/utilities.lua)
+- `SUPER + ALT + SPACE` is TAKEN ("Apps": `omarchy-shell omarchy.dock apps`, utilities.lua:2).
+  Pick another binding (proposal: SUPER + ALT + M, verified free) or override it on purpose.
+- omarchy-shell plugins have a limited read-only API, so the logic runs as a separate
+  process (CLI) called from a menu or a binding.
+- Installed: gtk3, gtk4, qt6-base, kxmlgui, kconfigwidgets, libdbusmenu-glib/gtk3, python3 + gi.
+  Test apps: nautilus, xournalpp, evince, obs, libreoffice, pinta, mpv.
+- Walker is NOT installed; `omarchy-menu-select` (stdin rows, returns the label) is the launcher.
+- Starting an app on a background workspace from a shell:
+  `hyprctl dispatch "hl.exec_cmd('[workspace 9 silent] xournalpp')"` (it prints an error, but the app starts).
 
-## Zasady pracy
-- Żadnych dopisków o AI w commitach/PR (Co-Authored-By, "Generated with"); globalne hooki to wymuszają.
-- NIE wpisywać tekstu/Entera przez wtype podczas testów UI (trafiło kiedyś do promptu Claude Code).
-- Testy menu robić przez D-Bus (gdbus/busctl), nie przez symulację klawiatury.
+## Working rules
+- No AI attributions in commits/PRs (Co-Authored-By, "Generated with"); global hooks enforce it.
+- Do NOT type text or Enter with wtype during UI tests (it once landed in the Claude Code prompt).
+- Test menus over D-Bus (gdbus/busctl, `omarchy-hud --list/--run`), not by simulating keystrokes.
+- Everything in the repo is in English.
 
-## Ustalenia z badania (sprawdzone na żywo)
+## Research findings (verified live)
 
-### Okno → menu: przez PID, bez wsparcia Hyprlanda
-- Hyprland NIE implementuje protokołów appmenu (brak org_kde_kwin_appmenu i gtk_shell1 w binarce).
-- Działa: `hyprctl activewindow -j` → `.pid`, potem `busctl --user list --json=short`
-  → połączenia D-Bus o tym samym PID → introspekcja (`busctl --user tree <name>`).
-- Plugin Hyprlanda NIE jest potrzebny.
+### Window → menu: by PID, no Hyprland support needed
+- Hyprland does NOT implement the appmenu protocols (no org_kde_kwin_appmenu or gtk_shell1 in the binary).
+- Works: `hyprctl activewindow -j` → `.pid`, then the D-Bus connections with that PID
+  (`GetConnectionUnixProcessID`) → introspection.
+- No Hyprland plugin needed.
+- Some connections of an app never answer Introspect (busctl hangs 25 s), so use a short timeout.
 
-### Wyniki dla aplikacji
-| Aplikacja | Interfejs | Wynik |
+### Results per app
+| App | Interface | Result |
 |---|---|---|
-| Xournal++ (GTK3, GtkApplication menubar) | org.gtk.Menus na /com/github/xournalpp/xournalpp/menus/menubar | 198 pozycji z etykietami (PL) |
-| Nautilus (GTK4) | org.gtk.Actions na /org/gnome/Nautilus (app.*) i /org/gnome/Nautilus/window/N (win.*) | ok. 10 + 14 akcji, bez etykiet; Activate działa |
-| Evince (GTK) | org.gtk.Actions na /org/gnome/Evince/window/1 | ok. 40 akcji, bez etykiet |
-| OBS (Qt6), domyślnie (QT_QPA_PLATFORMTHEME=gtk3) | tylko /MenuBar = menu traya (SNI) | brak menu okna |
-| OBS z QT_QPA_PLATFORMTHEME=generic | com.canonical.dbusmenu na /MenuBar/2 | 107 pozycji (Plik, Edycja, Widok…) |
-| Zen (Firefox) | tylko MPRIS + /org/mozilla/zen/Remote | nic |
-| Mattermost (Electron), Spotify | brak menu okna (Spotify: menu traya) | nic |
-| foot / TUI | brak | nic |
+| Xournal++ (GTK3, GtkApplication menubar) | org.gtk.Menus at /com/github/xournalpp/xournalpp/menus/menubar | 198 items with labels (localized), 149 enabled |
+| Nautilus (GTK4) | org.gtk.Actions at /org/gnome/Nautilus (app.*) and /org/gnome/Nautilus/window/N (win.*) | ~10 + 14 actions, no labels; Activate works |
+| Evince (GTK) | org.gtk.Actions at /org/gnome/Evince/window/1 | ~40 actions, no labels |
+| OBS (Qt6), default (QT_QPA_PLATFORMTHEME=gtk3) | only /MenuBar = tray menu (SNI) | no window menu |
+| OBS with QT_QPA_PLATFORMTHEME=generic + a registrar on the bus | com.canonical.dbusmenu at /MenuBar/2 | 107 items (File, Edit, View…) |
+| Zen (Firefox) | only MPRIS + /org/mozilla/zen/Remote | nothing |
+| Mattermost (Electron), Spotify | no window menu (Spotify: tray menu) | nothing |
+| foot / TUI | none | nothing |
 
-### Przydatne komendy
+### Useful commands
 ```bash
-# akcje GTK
+# GTK actions
 gdbus call --session -d org.gnome.Nautilus -o /org/gnome/Nautilus/window/1 -m org.gtk.Actions.List
 gdbus call --session -d org.gnome.Nautilus -o /org/gnome/Nautilus/window/1 \
   -m org.gtk.Actions.Activate toggle-sidebar "[]" "{}"
-# menu GTK (lista grup subskrypcji 0..N)
-gdbus call --session -d <unique> -o <path>/menus/menubar -m org.gtk.Menus.Start "[0,1,2,...,40]"
-# Qt dbusmenu (uwaga: "--" przed -1, inaczej gdbus bierze -1 za opcję)
+# GTK menus (subscribe to group 0, then the groups it references)
+gdbus call --session -d <unique> -o <path>/menus/menubar -m org.gtk.Menus.Start "[0]"
+# Qt dbusmenu (note the "--" before -1, otherwise gdbus reads -1 as an option)
 gdbus call --session -d <unique> -o /MenuBar/2 -m com.canonical.dbusmenu.GetLayout -- 0 -1 "['label']"
-# wykonanie pozycji dbusmenu
+# run a dbusmenu item
 gdbus call --session -d <unique> -o /MenuBar/2 -m com.canonical.dbusmenu.Event <id> clicked "<0>" 0
 ```
 
-### Pułapki
-1. Qt eksportuje menu tylko z niektórymi motywami platformy. `gtk3` (domyślny w Omarchy) NIE,
-   `generic` TAK, ale zmienia wygląd aplikacji Qt. NIESPRAWDZONE: czy `kde`/plasma-integration
-   eksportuje menu i zachowuje wygląd. To główna decyzja dla Qt/KDE.
-2. Qt pod Waylandem NIE wywołuje com.canonical.AppMenu.Registrar.RegisterWindow (sprawdzone
-   fałszywym registrarem). Menu i tak się pojawia na D-Bus, więc mapowanie zostaje przez PID.
-   Do testów Qt registrar może wcale nie być potrzebny (do sprawdzenia: czy OBS z `generic`
-   eksportuje menu BEZ registrara na szynie).
-3. GTK4 nie eksportuje menu typu hamburger, tylko akcje (nazwy, bez etykiet).
-   Etykiety tworzyć z nazw ("toggle-sidebar" → "Toggle sidebar"), a jeśli jest org.gtk.Menus, brać etykiety stamtąd.
-4. Kilka okien jednej aplikacji (/window/1, /window/2) nie daje się powiązać z aktywnym oknem Hyprlanda.
-   MVP: akcje aplikacji + pierwszego okna; później heurystyka.
-5. Menu dynamiczne dbusmenu (ostatnie pliki itp.) wymagają AboutToShow przed GetLayout.
-6. Electron, Chromium, Firefox/Zen i terminale są poza zasięgiem (brak eksportu menu pod Waylandem).
-7. Ruchome PID: Electron i niektóre aplikacje mają połączenia D-Bus w procesach potomnych,
-   więc trzeba sprawdzać też dzieci PID (pgrep -P). Uwaga: `setsid app & echo $!` NIE daje PID aplikacji.
+### Pitfalls
+1. Qt exports menus only with some platform themes. `gtk3` (Omarchy default) does NOT,
+   `generic` does, but changes how Qt apps look. UNVERIFIED: whether `kde`/plasma-integration
+   exports menus and keeps the look. This is the main decision for Qt/KDE.
+2. Qt on Wayland never calls com.canonical.AppMenu.Registrar.RegisterWindow, BUT it exports
+   the menubar only while the name com.canonical.AppMenu.Registrar is owned on the bus
+   (verified 2026-10-21: OBS with `generic` and no registrar exports only the tray menu).
+   So Qt support needs a tiny registrar service that just owns the name (~20 lines with Gio,
+   methods RegisterWindow/UnregisterWindow/GetMenuForWindow as no-ops). Mapping stays by PID.
+3. GTK4 does not export hamburger menus, only actions (names, no labels).
+   Labels come from names ("toggle-sidebar" → "Toggle sidebar"); when org.gtk.Menus exists, its labels win.
+4. Several windows of one app (/window/1, /window/2) can't be matched to Hyprland's focused window.
+   MVP: app actions + the first window; heuristics later.
+5. Dynamic dbusmenu menus (recent files etc.) need AboutToShow before GetLayout.
+6. Electron, Chromium, Firefox/Zen and terminals are out of reach (no menu export on Wayland).
+7. Moving PIDs: Electron and some apps hold D-Bus connections in child processes,
+   so check the PID's children too. Note: `setsid app & echo $!` does NOT give the app's PID.
 
-## Proponowana architektura (MVP)
-CLI `omarchy-hud` (Python + gi/Gio, bez nowych zależności):
-1. PID aktywnego okna (hyprctl), nazwy D-Bus procesu i jego dzieci.
-2. Zbiera pozycje z trzech źródeł: org.gtk.Menus (etykiety + akcja), org.gtk.Actions (app./win.),
-   com.canonical.dbusmenu (Qt/KDE). Wynik to płaska lista "Plik › Eksportuj jako PDF", tylko enabled/visible.
-3. Pokazuje ją w menu Omarchy / Walker w trybie dmenu (fuzzy search wbudowany).
-4. Wybór → org.gtk.Actions.Activate albo dbusmenu Event "clicked".
-5. Bind w ~/.config/hypr (nie w default/).
+## Architecture (MVP, implemented in 0.1.0)
+CLI `omarchy-hud` (Python + gi/Gio, no new dependencies):
+1. Focused window's PID (hyprctl), D-Bus connections of the process and its children.
+2. Collects items from three sources: org.gtk.Menus (labels + action), org.gtk.Actions (app./win.),
+   com.canonical.dbusmenu (Qt/KDE). Output: a flat list "File › Export as PDF", enabled/visible only.
+3. Shows it in the Omarchy menu (`omarchy-menu-select`, built-in fuzzy search).
+4. Selection → org.gtk.Actions.Activate or dbusmenu Event "clicked".
+5. Binding in ~/.config/hypr (not in default/).
 
-Aplikacje Omarchy (Qt Quick, bez QMenuBar): konwencja, że aplikacja wystawia org.gtk.Actions
-lub dbusmenu ze swoimi poleceniami. Wtedy HUD obsłuży je bez osobnego kodu.
+Omarchy apps (Qt Quick, no QMenuBar): a convention that the app exports org.gtk.Actions
+or dbusmenu with its commands, so the HUD handles them with no extra code.
 
-## Kolejność prac
-1. MVP dla GTK (Xournal++ = org.gtk.Menus, Nautilus/Evince = org.gtk.Actions) + test na dbus.
-2. Wybór launchera (menu omarchy-shell czy walker --dmenu) i skrótu.
-3. Qt: decyzja o QT_QPA_PLATFORMTHEME (sprawdzić plasma-integration), potem dbusmenu.
-4. Etykiety dla akcji GTK4, wiele okien, menu dynamiczne.
-5. Konwencja dla aplikacji Omarchy.
-6. Niesprawdzone: LibreOffice, natywne aplikacje KDE (żadna nie jest zainstalowana).
+## Work order
+1. ~~GTK MVP (Xournal++ = org.gtk.Menus, Nautilus/Evince = org.gtk.Actions) + D-Bus test.~~ Done in 0.1.0.
+2. ~~Launcher choice~~ (`omarchy-menu-select`) and binding (open).
+3. Qt: decide QT_QPA_PLATFORMTHEME (check plasma-integration), ship the registrar service.
+4. Labels for GTK4 actions, multiple windows, dynamic menus.
+5. Convention for Omarchy apps.
+6. Unverified: LibreOffice, native KDE apps (none installed).
 
-## Decyzje do podjęcia przez użytkownika
-- Skrót (SUPER+ALT+SPACE zajęty).
-- Czy zmieniamy motyw Qt dla wszystkich aplikacji.
-- Docelowo osobny pakiet AUR czy PR do Omarchy.
-
-Uwaga: tymczasowy registrar (registrar.py, ok. 20 linii) z sesji badawczej nie przetrwał; w razie potrzeby odtworzyć.
+## Decisions for the user
+- Binding (SUPER+ALT+SPACE is taken; SUPER+ALT+M is free).
+- Whether to change the Qt theme for all apps.
+- Long term: a separate AUR package or a PR to Omarchy.
