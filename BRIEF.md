@@ -42,7 +42,9 @@ command. Target: GTK, GNOME, Qt, KDE and Omarchy's own apps.
 | Nautilus (GTK4) | org.gtk.Actions at /org/gnome/Nautilus (app.*) and /org/gnome/Nautilus/window/N (win.*) | ~10 + 14 actions, no labels; Activate works |
 | Evince (GTK) | org.gtk.Actions at /org/gnome/Evince/window/1 | ~40 actions, no labels |
 | OBS (Qt6), default (QT_QPA_PLATFORMTHEME=gtk3) | only /MenuBar = tray menu (SNI) | no window menu |
-| OBS with QT_QPA_PLATFORMTHEME=generic + a registrar on the bus | com.canonical.dbusmenu at /MenuBar/2 | 107 items (File, Edit, View…) |
+| OBS with a registrar on the bus (gtk3 or generic theme) | com.canonical.dbusmenu at /MenuBar/2 | 107 items, 68 enabled (File, Edit, View…) |
+| Kdenlive (KDE, KXmlGui) with a registrar | com.canonical.dbusmenu at /MenuBar/2 | 630 enabled items |
+| LibreOffice (GTK3 VCL) | org.gtk.Menus per window at /org/libreoffice/window/<ptr>/menus/menubar, actions at /org/libreoffice/window/<ptr> | 516 items in Writer |
 | Zen (Firefox) | only MPRIS + /org/mozilla/zen/Remote | nothing |
 | Mattermost (Electron), Spotify | no window menu (Spotify: tray menu) | nothing |
 | foot / TUI | none | nothing |
@@ -62,14 +64,16 @@ gdbus call --session -d <unique> -o /MenuBar/2 -m com.canonical.dbusmenu.Event <
 ```
 
 ### Pitfalls
-1. Qt exports menus only with some platform themes. `gtk3` (Omarchy default) does NOT,
-   `generic` does, but changes how Qt apps look. UNVERIFIED: whether `kde`/plasma-integration
-   exports menus and keeps the look. This is the main decision for Qt/KDE.
+1. ~~Qt exports menus only with some platform themes.~~ Corrected 2026-10-22: with a registrar
+   running, the default `gtk3` theme exports too (OBS: 68 commands, Kdenlive: 630), so the Qt
+   theme does not need to change. The research saw no menu because no registrar was running.
 2. Qt on Wayland never calls com.canonical.AppMenu.Registrar.RegisterWindow, BUT it exports
-   the menubar only while the name com.canonical.AppMenu.Registrar is owned on the bus
-   (verified 2026-10-21: OBS with `generic` and no registrar exports only the tray menu).
-   So Qt support needs a tiny registrar service that just owns the name (~20 lines with Gio,
-   methods RegisterWindow/UnregisterWindow/GetMenuForWindow as no-ops). Mapping stays by PID.
+   the menubar only if the name com.canonical.AppMenu.Registrar is owned when the window is
+   created (checked once; the menu stays after the registrar exits). Implemented as
+   `omarchy-hud registrar` + `dist/omarchy-hud-registrar.service`.
+   **Side effect (verified over AT-SPI):** with the registrar, Qt hides the in-window menubar
+   (OBS: 1261x26 visible without, 0x0 not showing with). Qt has no env switch to keep both
+   (only the app-side Qt::AA_DontUseNativeMenuBar), so the service is opt-in.
 3. GTK4 does not export hamburger menus, only actions (names, no labels).
    Labels come from names ("toggle-sidebar" → "Toggle sidebar"); when org.gtk.Menus exists, its labels win.
 4. Several windows of one app (/window/1, /window/2) can't be matched to Hyprland's focused window.
@@ -94,12 +98,12 @@ or dbusmenu with its commands, so the HUD handles them with no extra code.
 ## Work order
 1. ~~GTK MVP (Xournal++ = org.gtk.Menus, Nautilus/Evince = org.gtk.Actions) + D-Bus test.~~ Done in 0.1.0.
 2. ~~Launcher choice~~ (`omarchy-menu-select`) and binding (open).
-3. Qt: decide QT_QPA_PLATFORMTHEME (check plasma-integration), ship the registrar service.
+3. ~~Qt: decide QT_QPA_PLATFORMTHEME, ship the registrar service.~~ Done: no theme change needed, registrar is opt-in.
 4. Labels for GTK4 actions, multiple windows, dynamic menus.
 5. Convention for Omarchy apps.
-6. Unverified: LibreOffice, native KDE apps (none installed).
+6. ~~Unverified: LibreOffice, native KDE apps.~~ Both work (LibreOffice Writer, Kdenlive).
 
 ## Decisions for the user
 - Binding (SUPER+ALT+SPACE is taken; SUPER+ALT+M is free).
-- Whether to change the Qt theme for all apps.
+- ~~Whether to change the Qt theme for all apps.~~ Not needed. Instead: whether to enable the registrar (hides Qt in-window menubars).
 - Long term: a separate AUR package or a PR to Omarchy.

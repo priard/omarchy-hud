@@ -7,6 +7,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- `omarchy-hud registrar` and `dist/omarchy-hud-registrar.service`: a tiny AppMenu registrar
+  so Qt and KDE apps export their menus (OBS: 68 commands, Kdenlive: 630). Opt-in, because
+  Qt then hides the in-window menubar.
 - LibreOffice: its per-window menubars now work (516 commands in Writer); each menubar is
   matched with its own window's actions.
 

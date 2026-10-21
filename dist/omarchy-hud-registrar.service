@@ -1,0 +1,13 @@
+[Unit]
+Description=AppMenu registrar, so Qt and KDE apps export their menus to omarchy-hud
+PartOf=graphical-session.target
+After=graphical-session-pre.target
+
+[Service]
+Type=dbus
+BusName=com.canonical.AppMenu.Registrar
+ExecStart=%h/.local/bin/omarchy-hud registrar
+Restart=on-failure
+
+[Install]
+WantedBy=graphical-session.target

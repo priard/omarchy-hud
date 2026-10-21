@@ -15,7 +15,7 @@ the menu is open: about 6 ms and 3 MB of RAM to collect a menu of 150 commands.
 | GTK3/GTK4 apps with a menubar (Xournal++) | yes | full labels and shortcuts |
 | LibreOffice | yes | its GTK3 menubar, per window |
 | GTK apps without a menubar (Nautilus, Evince) | yes | action names turned into labels |
-| Qt/KDE (OBS) | partly | needs `QT_QPA_PLATFORMTHEME=generic` and a running AppMenu registrar, see BRIEF.md |
+| Qt and KDE apps (OBS, Kdenlive) | opt-in | needs the registrar service, which hides their in-window menubars; see below |
 | Electron, Chromium, Firefox, terminals | no | they export no menus on Wayland |
 
 ## Install
@@ -32,6 +32,22 @@ Bind it in `~/.config/hypr/bindings.lua` (`SUPER + ALT + SPACE` is taken by Omar
 ```lua
 o.bind("SUPER + ALT + M", "HUD", "omarchy-hud")
 ```
+
+### Qt and KDE apps
+
+Qt exports its menus over D-Bus only if an AppMenu registrar is running when a window
+opens. `omarchy-hud registrar` is one (0.7 MB, idle), shipped as a systemd user unit:
+
+```bash
+systemctl --user link "$PWD/dist/omarchy-hud-registrar.service"
+systemctl --user enable --now omarchy-hud-registrar
+```
+
+Restart Qt apps afterwards. **The trade-off:** with a registrar running, Qt and KDE apps
+hide the menubar inside their windows, as under Unity or Plasma's global menu, so the HUD
+becomes the way into their menus. Qt offers no switch to keep both. Omarchy's default
+`QT_QPA_PLATFORMTHEME=gtk3` works as is. To undo:
+`systemctl --user disable --now omarchy-hud-registrar` and restart the apps.
 
 ## Usage
 

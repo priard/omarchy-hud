@@ -2,6 +2,7 @@
 
 mod bus;
 mod menus;
+mod registrar;
 
 use std::io::{Read, Write};
 use std::os::unix::net::UnixStream;
@@ -12,12 +13,14 @@ use std::{env, fs, thread};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 const USAGE: &str = "usage: omarchy-hud [--pid PID] [--list | --run LABEL] [--version]
+       omarchy-hud registrar
 
 Search and run the menu commands of the focused window.
 
   --pid PID    use this process instead of the focused window
   --list       print the commands instead of showing the menu
-  --run LABEL  run the command with this label without the menu";
+  --run LABEL  run the command with this label without the menu
+  registrar    run the AppMenu registrar Qt needs to export its menus";
 
 fn main() -> ExitCode {
     match run() {
@@ -37,6 +40,7 @@ fn run() -> Result<ExitCode, String> {
             "--pid" => pid = Some(args.next().and_then(|p| p.parse().ok()).ok_or("--pid needs a number")?),
             "--list" => list = true,
             "--run" => label = Some(args.next().ok_or("--run needs a label")?),
+            "registrar" => return registrar::run().map(|_| ExitCode::SUCCESS),
             "--version" => {
                 println!("omarchy-hud {VERSION}");
                 return Ok(ExitCode::SUCCESS);
