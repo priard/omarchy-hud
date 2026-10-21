@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- Opening the HUD no longer waits 0.5 s for app connections that never answer D-Bus
+  (Xournal++: 580 ms → 130 ms).
+
 ## [0.1.0] - 2026-10-21
 
 ### Added

@@ -17,8 +17,10 @@ from gi.repository import Gio, GLib  # noqa: E402
 __version__ = "0.1.0"
 
 SEP = " › "
-# Some connections of an app (worker threads, portals) never answer; don't wait for them.
 TIMEOUT_MS = 500
+# Some connections of an app (worker threads, portals) never answer, and the HUD waits for
+# the slowest one; a live connection answers the first Introspect in about a millisecond.
+PROBE_TIMEOUT_MS = 50
 GTK_MENUS = "org.gtk.Menus"
 GTK_ACTIONS = "org.gtk.Actions"
 DBUSMENU = "com.canonical.dbusmenu"
@@ -96,8 +98,8 @@ class Bus:
     def objects(self, name, path="/"):
         """{path: set(interfaces)} for the whole object tree of a connection."""
         try:
-            (xml,) = self.call(name, path, "org.freedesktop.DBus.Introspectable",
-                               "Introspect", reply="(s)")
+            (xml,) = self.call(name, path, "org.freedesktop.DBus.Introspectable", "Introspect",
+                               reply="(s)", timeout=PROBE_TIMEOUT_MS if path == "/" else TIMEOUT_MS)
         except GLib.Error:
             return {}
         node = Gio.DBusNodeInfo.new_for_xml(xml)
