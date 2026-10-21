@@ -110,6 +110,11 @@ Where the time went, and what fixed it:
 | `hyprctl activewindow` spawn | Hyprland's socket is queried directly |
 | One D-Bus round trip per name and per object | `GetConnectionUnixProcessID` and `Introspect` are pipelined, one batch per tree level |
 
+0.3.0, apps added since (`--list`, median of 20): LibreOffice Writer (518 commands) 12 ms /
+5.8 ms CPU / 3.7 MB, Kdenlive (630) 14.5 ms / 7.3 ms CPU / 4.2 MB. Most of that is the apps
+answering; Kdenlive's menu is fetched twice because Qt fills dynamic submenus only on
+AboutToShow and does not say which ones changed. The registrar idles at 0.7 MB.
+
 Lazy loading was considered and dropped: fuzzy search needs every command up front,
 and fetching all 148 Xournal++ commands takes about a millisecond.
 

@@ -6,6 +6,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-22
+
 ### Fixed
 - LibreOffice collection no longer copies its 770 actions once per menu item (23 → 12 ms).
 
