@@ -57,6 +57,9 @@ omarchy-hud --list --pid 1234    # print the commands of a process
 omarchy-hud --run "File › Save" --pid 1234
 ```
 
+Commands you picked recently in an app come first, newest on top (kept in
+`~/.local/state/omarchy-hud/recent`, 10 per app).
+
 ## Development
 
 ```bash

@@ -7,6 +7,8 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Recently picked commands come first, per app (10 each, in
+  `$XDG_STATE_HOME/omarchy-hud/recent`). Only menu picks count, not `--run`.
 - `omarchy-hud registrar` and `dist/omarchy-hud-registrar.service`: a tiny AppMenu registrar
   so Qt and KDE apps export their menus (OBS: 68 commands, Kdenlive: 630). Opt-in, because
   Qt then hides the in-window menubar.

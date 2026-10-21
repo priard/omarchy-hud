@@ -2,6 +2,7 @@
 
 mod bus;
 mod menus;
+mod recent;
 mod registrar;
 
 use std::io::{Read, Write};
@@ -57,7 +58,9 @@ fn run() -> Result<ExitCode, String> {
         None => focused_pid()?,
     };
     let bus = bus::Bus::session()?;
-    let commands = menus::collect(&bus, pid);
+    let mut commands = menus::collect(&bus, pid);
+    let app = recent::app_key(pid);
+    recent::promote(&mut commands, |c| c.label.as_str(), &recent::labels(&app));
 
     if list {
         let mut out = std::io::stdout().lock();
@@ -73,7 +76,10 @@ fn run() -> Result<ExitCode, String> {
             return Ok(ExitCode::FAILURE);
         }
         None => match pick(&commands)? {
-            Some(label) => label,
+            Some(label) => {
+                recent::remember(&app, &label);
+                label
+            }
             None => return Ok(ExitCode::SUCCESS),
         },
     };
