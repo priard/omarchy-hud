@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- LibreOffice: its per-window menubars now work (516 commands in Writer); each menubar is
+  matched with its own window's actions.
+
 ## [0.2.0] - 2026-10-22
 
 ### Changed

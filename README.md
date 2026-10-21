@@ -13,6 +13,7 @@ the menu is open: about 6 ms and 3 MB of RAM to collect a menu of 150 commands.
 | Toolkit | Works | Notes |
 |---|---|---|
 | GTK3/GTK4 apps with a menubar (Xournal++) | yes | full labels and shortcuts |
+| LibreOffice | yes | its GTK3 menubar, per window |
 | GTK apps without a menubar (Nautilus, Evince) | yes | action names turned into labels |
 | Qt/KDE (OBS) | partly | needs `QT_QPA_PLATFORMTHEME=generic` and a running AppMenu registrar, see BRIEF.md |
 | Electron, Chromium, Firefox, terminals | no | they export no menus on Wayland |

@@ -251,44 +251,54 @@ fn describe_all(bus: &Bus, name: &str, path: &str) -> Described {
 
 /// Commands from GtkApplication: menubar labels when exported, else bare action names.
 fn gtk_commands(bus: &Bus, name: &str, objects: &Objects) -> Vec<Command> {
-    let with = |iface: &'static str| objects.iter().filter(move |(_, ifs)| ifs.iter().any(|i| i == iface)).map(|(p, _)| p.clone());
-    let window_number = |p: &String| p.rsplit('/').next().and_then(|n| n.parse::<u32>().ok()).unwrap_or(0);
-    let mut windows: Vec<String> = with(GTK_ACTIONS).filter(|p| p.contains("/window/")).collect();
-    windows.sort_by_key(window_number);
-    let app = with(GTK_ACTIONS).find(|p| !p.contains("/window/"));
-    // shortcut: the first window stands for all of them, the focused one may be another (BRIEF pitfall 4)
-    let actions: HashMap<&str, (String, Described)> = [("app", app), ("win", windows.into_iter().next())]
-        .into_iter()
-        .filter_map(|(prefix, path)| path.map(|p| (prefix, (p.clone(), describe_all(bus, name, &p)))))
-        .collect();
+    let with = |iface: &'static str| {
+        let mut paths: Vec<String> = objects.iter().filter(|(_, ifs)| ifs.iter().any(|i| i == iface)).map(|(p, _)| p.clone()).collect();
+        paths.sort_by_key(|p| (p.len(), p.clone()));
+        paths
+    };
+    let action_paths = with(GTK_ACTIONS);
+    let app = action_paths.iter().find(|p| !p.contains("/window/")).cloned();
+    // shortcut: without a menubar of its own, a window is matched to the first one, which may not
+    // be the focused one (BRIEF pitfall 4)
+    let first_window = action_paths.iter().find(|p| p.contains("/window/")).cloned();
+    let mut described: HashMap<String, Described> = HashMap::new();
+    let mut describe = |path: &String| described.entry(path.clone()).or_insert_with(|| describe_all(bus, name, path)).clone();
 
-    let gtk = |prefix: &str, action: &str, target: Option<Box<dyn RefArg>>| Action::Gtk {
+    let gtk = |path: &str, action: &str, target: Option<Box<dyn RefArg>>| Action::Gtk {
         name: name.to_string(),
-        path: actions[prefix].0.clone(),
+        path: path.to_string(),
         action: action.to_string(),
         target,
     };
 
     let mut commands = Vec::new();
-    for path in with(GTK_MENUS) {
-        let menus = subscribe(bus, name, &path);
+    for menubar in with(GTK_MENUS) {
+        // LibreOffice exports a menubar per window, under that window's action object.
+        let owner = menubar.split("/menus/").next().map(str::to_owned).filter(|p| p.contains("/window/") && action_paths.contains(p));
+        let prefixes: HashMap<&str, String> = [("app", app.clone()), ("win", owner.or(first_window.clone()))]
+            .into_iter()
+            .filter_map(|(prefix, path)| Some((prefix, path?)))
+            .collect();
+        let menus = subscribe(bus, name, &menubar);
         let mut items = Vec::new();
         walk_gtk_menu(&menus, (0, 0), &mut Vec::new(), &mut items);
         for (label, item) in items {
             let Some((prefix, action)) = item.action.as_deref().and_then(|a| a.split_once('.')) else { continue };
-            let Some(&(enabled, takes_param)) = actions.get(prefix).and_then(|(_, d)| d.get(action)) else { continue };
+            let Some(path) = prefixes.get(prefix) else { continue };
+            let Some(&(enabled, takes_param)) = describe(path).get(action) else { continue };
             if enabled && (item.target.is_some() || !takes_param) {
                 let target = item.target.as_ref().map(|t| t.box_clone());
-                commands.push(Command { label, accel: gtk_accel(&item.accel), action: gtk(prefix, action, target) });
+                commands.push(Command { label, accel: gtk_accel(&item.accel), action: gtk(path, action, target) });
             }
         }
     }
     if commands.is_empty() {
-        for (prefix, (_, described)) in ["app", "win"].iter().filter_map(|p| actions.get_key_value(p)) {
+        for path in [app, first_window].into_iter().flatten() {
+            let described = describe(&path);
             let mut names: Vec<_> = described.iter().filter(|(_, (enabled, takes_param))| *enabled && !takes_param).map(|(a, _)| a).collect();
             names.sort();
             for action in names {
-                commands.push(Command { label: humanize(action), accel: String::new(), action: gtk(prefix, action, None) });
+                commands.push(Command { label: humanize(action), accel: String::new(), action: gtk(&path, action, None) });
             }
         }
     }
