@@ -8,9 +8,6 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [0.3.0] - 2026-10-22
 
-### Fixed
-- LibreOffice collection no longer copies its 770 actions once per menu item (23 → 12 ms).
-
 ### Added
 - Apps with several windows: the HUD picks the focused one by matching creation order
   (Hyprland's `stableID` against the app's window numbers, floating dialogs left out),
@@ -27,6 +24,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
   Qt then hides the in-window menubar.
 - LibreOffice: its per-window menubars now work (516 commands in Writer); each menubar is
   matched with its own window's actions.
+
+### Fixed
+- LibreOffice collection no longer copies its 770 actions once per menu item (23 → 12 ms).
 
 ## [0.2.0] - 2026-10-22
 
