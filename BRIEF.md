@@ -81,6 +81,10 @@ gdbus call --session -d <unique> -o /MenuBar/2 -m com.canonical.dbusmenu.Event <
    Nautilus: 12 of 19 commands get a translated label.
 4. Several windows of one app (/window/1, /window/2) can't be matched to Hyprland's focused window.
    MVP: app actions + the first window; heuristics later.
+   Since 0.3: matched by creation order. Hyprland side: the app's non-floating windows sorted
+   by `stableID`; app side: `/window/N` sorted by N (LibreOffice: pointer ids, only windows
+   whose menubar has items, since it exports dialogs too). Equal counts → same index, else
+   the first window. Verified with two LibreOffice documents via `busctl monitor`.
 5. Dynamic dbusmenu menus (recent files etc.) need AboutToShow before GetLayout.
 6. Electron, Chromium, Firefox/Zen and terminals are out of reach (no menu export on Wayland).
 7. Moving PIDs: Electron and some apps hold D-Bus connections in child processes,

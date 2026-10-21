@@ -6,7 +6,15 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Fixed
+- LibreOffice collection no longer copies its 770 actions once per menu item (23 → 12 ms).
+
 ### Added
+- Apps with several windows: the HUD picks the focused one by matching creation order
+  (Hyprland's `stableID` against the app's window numbers, floating dialogs left out),
+  and falls back to the first window when the counts differ. Works for LibreOffice's
+  per-window menubars and GTK's `/window/N` actions.
+- `--window ADDRESS` to act on a given Hyprland window without focusing it.
 - Labels for GTK4 apps without a menubar come from the GtkBuilder files compiled into
   the app and its gettext catalog, so Nautilus shows "Nowa karta" instead of "New tab".
   Parameterized actions from those menus work too.

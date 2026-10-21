@@ -1,25 +1,28 @@
 //! omarchy-hud: search and run the menu commands of the focused window.
 
 mod bus;
+mod hypr;
 mod labels;
 mod menus;
 mod recent;
 mod registrar;
 
-use std::io::{Read, Write};
-use std::os::unix::net::UnixStream;
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, ExitCode};
 use std::time::Duration;
 use std::{env, fs, thread};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
-const USAGE: &str = "usage: omarchy-hud [--pid PID] [--list | --run LABEL] [--version]
+const USAGE: &str =
+    "usage: omarchy-hud [--pid PID | --window ADDRESS] [--list | --run LABEL] [--version]
        omarchy-hud registrar
 
 Search and run the menu commands of the focused window.
 
   --pid PID    use this process instead of the focused window
+  --window ADDRESS
+               use this Hyprland window (as in hyprctl clients) instead of the focused one
   --list       print the commands instead of showing the menu
   --run LABEL  run the command with this label without the menu
   registrar    run the AppMenu registrar Qt needs to export its menus";
@@ -35,7 +38,7 @@ fn main() -> ExitCode {
 }
 
 fn run() -> Result<ExitCode, String> {
-    let (mut pid, mut list, mut label) = (None, false, None);
+    let (mut pid, mut window, mut list, mut label) = (None, None, false, None);
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -46,6 +49,7 @@ fn run() -> Result<ExitCode, String> {
                         .ok_or("--pid needs a number")?,
                 )
             }
+            "--window" => window = Some(args.next().ok_or("--window needs an address")?),
             "--list" => list = true,
             "--run" => label = Some(args.next().ok_or("--run needs a label")?),
             "registrar" => return registrar::run().map(|_| ExitCode::SUCCESS),
@@ -60,12 +64,12 @@ fn run() -> Result<ExitCode, String> {
         }
     }
 
-    let pid = match pid {
-        Some(pid) => pid,
-        None => focused_pid()?,
+    let (pid, focus) = match pid {
+        Some(pid) => (pid, None),
+        None => hypr::window(window.as_deref())?,
     };
     let bus = bus::Bus::session()?;
-    let mut commands = menus::collect(&bus, pid);
+    let mut commands = menus::collect(&bus, pid, focus);
     let app = recent::app_key(pid);
     recent::promote(&mut commands, |c| c.label.as_str(), &recent::labels(&app));
 
@@ -100,22 +104,6 @@ fn run() -> Result<ExitCode, String> {
         .ok_or_else(|| format!("no command {label:?}"))?;
     menus::activate(&bus, &command.action)?;
     Ok(ExitCode::SUCCESS)
-}
-
-/// Asks Hyprland over its socket, which is faster than spawning hyprctl.
-fn focused_pid() -> Result<u32, String> {
-    let dir = env::var("XDG_RUNTIME_DIR").map_err(|_| "XDG_RUNTIME_DIR is not set")?;
-    let sig = env::var("HYPRLAND_INSTANCE_SIGNATURE").map_err(|_| "not running under Hyprland")?;
-    let mut sock = UnixStream::connect(format!("{dir}/hypr/{sig}/.socket.sock"))
-        .map_err(|e| format!("hyprland socket: {e}"))?;
-    sock.write_all(b"activewindow").map_err(|e| e.to_string())?;
-    let mut reply = String::new();
-    sock.read_to_string(&mut reply).map_err(|e| e.to_string())?;
-    reply
-        .lines()
-        .find_map(|l| l.trim().strip_prefix("pid: "))
-        .and_then(|p| p.parse().ok())
-        .ok_or_else(|| "no focused window".into())
 }
 
 /// Shows the commands in the Omarchy menu and returns the picked label.

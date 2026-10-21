@@ -10,6 +10,7 @@ use dbus::Signature;
 use dbus::arg::{ArgType, PropMap, RefArg, Variant};
 
 use crate::bus::{self, Bus, TIMEOUT};
+use crate::hypr::Focus;
 use crate::labels;
 
 const SEP: &str = " › ";
@@ -77,21 +78,26 @@ pub fn activate(bus: &Bus, action: &Action) -> Result<(), String> {
     Ok(())
 }
 
-pub fn collect(bus: &Bus, pid: u32) -> Vec<Command> {
+pub fn collect(bus: &Bus, pid: u32, focus: Option<Focus>) -> Vec<Command> {
     let trees = object_trees(bus, &connections(bus, &pid_tree(pid)), Some(PROBE_GRACE));
     let silent: Vec<String> = trees
         .iter()
         .filter(|(_, objects)| objects.is_empty())
         .map(|(n, _)| n.clone())
         .collect();
-    let commands = commands_from(bus, trees, pid);
+    let commands = commands_from(bus, trees, pid, focus);
     if commands.is_empty() && !silent.is_empty() {
-        return commands_from(bus, object_trees(bus, &silent, None), pid);
+        return commands_from(bus, object_trees(bus, &silent, None), pid, focus);
     }
     commands
 }
 
-fn commands_from(bus: &Bus, trees: Vec<(String, Objects)>, pid: u32) -> Vec<Command> {
+fn commands_from(
+    bus: &Bus,
+    trees: Vec<(String, Objects)>,
+    pid: u32,
+    focus: Option<Focus>,
+) -> Vec<Command> {
     let mut commands = Vec::new();
     let mut seen = HashSet::new();
     for (name, objects) in trees {
@@ -100,7 +106,7 @@ fn commands_from(bus: &Bus, trees: Vec<(String, Objects)>, pid: u32) -> Vec<Comm
             .values()
             .any(|ifs| ifs.iter().any(|i| i == GTK_ACTIONS || i == GTK_MENUS))
         {
-            found.extend(gtk_commands(bus, &name, &objects, pid));
+            found.extend(gtk_commands(bus, &name, &objects, pid, focus));
         }
         for path in objects
             .iter()
@@ -352,7 +358,13 @@ fn describe_all(bus: &Bus, name: &str, path: &str) -> Described {
 }
 
 /// Commands from GtkApplication: menubar labels when exported, else bare action names.
-fn gtk_commands(bus: &Bus, name: &str, objects: &Objects, pid: u32) -> Vec<Command> {
+fn gtk_commands(
+    bus: &Bus,
+    name: &str,
+    objects: &Objects,
+    pid: u32,
+    focus: Option<Focus>,
+) -> Vec<Command> {
     let with = |iface: &'static str| {
         let mut paths: Vec<String> = objects
             .iter()
@@ -367,19 +379,43 @@ fn gtk_commands(bus: &Bus, name: &str, objects: &Objects, pid: u32) -> Vec<Comma
         .iter()
         .find(|p| !p.contains("/window/"))
         .cloned();
-    // shortcut: without a menubar of its own, a window is matched to the first one, which may not
-    // be the focused one (BRIEF pitfall 4)
-    let first_window = action_paths
+    let mut windows: Vec<String> = action_paths
         .iter()
-        .find(|p| p.contains("/window/"))
-        .cloned();
-    let mut described: HashMap<String, Described> = HashMap::new();
-    let mut describe = |path: &String| {
-        described
-            .entry(path.clone())
-            .or_insert_with(|| describe_all(bus, name, path))
-            .clone()
+        .filter(|p| p.contains("/window/"))
+        .cloned()
+        .collect();
+    windows.sort_by_key(|p| p.rsplit('/').next().and_then(|n| n.parse::<u64>().ok()));
+    let menubars = with(GTK_MENUS);
+    // LibreOffice exports a menubar per window, under that window's action object.
+    let owner = |menubar: &str, windows: &[String]| {
+        let window = menubar.split("/menus/").next()?;
+        windows.iter().find(|w| *w == window).cloned()
     };
+    if menubars.iter().any(|m| owner(m, &windows).is_some()) {
+        // Windows without menu items are dialogs, which LibreOffice exports too.
+        let own: Vec<(String, &str)> = menubars
+            .iter()
+            .filter_map(|m| Some((owner(m, &windows)?, m.as_str())))
+            .collect();
+        let with_items = with_items(bus, name, &own);
+        windows.retain(|w| with_items.contains(w));
+    }
+    // shortcut: windows are matched by creation order (see hypr::Focus); when the counts
+    // differ, e.g. with a floating main window, the first window stands in (BRIEF pitfall 4)
+    let window = focus
+        .filter(|f| f.count == windows.len())
+        .and_then(|f| windows.get(f.index))
+        .or(windows.first())
+        .cloned();
+    // Only the app's and the chosen window's actions are ever used.
+    let actions: HashMap<&str, (String, Described)> = [("app", app), ("win", window.clone())]
+        .into_iter()
+        .filter_map(|(prefix, path)| {
+            let path = path?;
+            let described = describe_all(bus, name, &path);
+            Some((prefix, (path, described)))
+        })
+        .collect();
 
     let gtk = |path: &str, action: &str, target: Option<Box<dyn RefArg>>| Action::Gtk {
         name: name.to_string(),
@@ -389,21 +425,17 @@ fn gtk_commands(bus: &Bus, name: &str, objects: &Objects, pid: u32) -> Vec<Comma
     };
 
     let mut commands = Vec::new();
-    for menubar in with(GTK_MENUS) {
-        // LibreOffice exports a menubar per window, under that window's action object.
-        let owner = menubar
-            .split("/menus/")
-            .next()
-            .map(str::to_owned)
-            .filter(|p| p.contains("/window/") && action_paths.contains(p));
-        let prefixes: HashMap<&str, String> = [
-            ("app", app.clone()),
-            ("win", owner.or(first_window.clone())),
-        ]
-        .into_iter()
-        .filter_map(|(prefix, path)| Some((prefix, path?)))
+    let all_windows: Vec<String> = action_paths
+        .iter()
+        .filter(|p| p.contains("/window/"))
+        .cloned()
         .collect();
-        let menus = subscribe(bus, name, &menubar);
+    for menubar in &menubars {
+        let menubar_owner = owner(menubar, &all_windows);
+        if menubar_owner.is_some() && menubar_owner != window {
+            continue;
+        }
+        let menus = subscribe(bus, name, menubar);
         let mut items = Vec::new();
         walk_gtk_menu(&menus, (0, 0), &mut Vec::new(), &mut items);
         for (label, item) in items {
@@ -411,13 +443,13 @@ fn gtk_commands(bus: &Bus, name: &str, objects: &Objects, pid: u32) -> Vec<Comma
             else {
                 continue;
             };
-            let Some(path) = prefixes.get(prefix) else {
+            let Some((path, described)) = actions.get(prefix) else {
                 continue;
             };
-            let Some((enabled, param)) = describe(path).get(action).cloned() else {
+            let Some((enabled, param)) = described.get(action) else {
                 continue;
             };
-            if enabled && (item.target.is_some() || param.is_empty()) {
+            if *enabled && (item.target.is_some() || param.is_empty()) {
                 let target = item.target.as_ref().map(|t| t.box_clone());
                 commands.push(Command {
                     label,
@@ -431,9 +463,10 @@ fn gtk_commands(bus: &Bus, name: &str, objects: &Objects, pid: u32) -> Vec<Comma
         // GTK4 apps export bare action names; the GtkBuilder files in their binary say how
         // the app labels them, in the user's language.
         let ui = labels::for_pid(pid);
-        for (prefix, path) in [("app", app), ("win", first_window)] {
-            let Some(path) = path else { continue };
-            let described = describe(&path);
+        for prefix in ["app", "win"] {
+            let Some((path, described)) = actions.get(prefix) else {
+                continue;
+            };
             let mut covered: HashSet<(&str, Option<&str>)> = HashSet::new();
             for item in &ui {
                 let Some(action) = item
@@ -492,6 +525,25 @@ fn parse_target(text: &str, signature: &str) -> Option<Box<dyn RefArg>> {
         "u" => Box::new(text.parse::<u32>().ok()?),
         _ => return None,
     })
+}
+
+/// The windows whose menubar has any items, asked in one pipelined batch.
+fn with_items(bus: &Bus, name: &str, menubars: &[(String, &str)]) -> HashSet<String> {
+    let msgs = menubars
+        .iter()
+        .filter_map(|(_, m)| bus::method_call(name, m, GTK_MENUS, "Start", (vec![0u32],)).ok())
+        .collect();
+    let replies = bus.call_all(msgs, TIMEOUT, None);
+    let mut found = HashSet::new();
+    for ((window, menubar), reply) in menubars.iter().zip(replies) {
+        bus.send(name, menubar, GTK_MENUS, "End", (vec![0u32],));
+        let groups: Vec<(u32, u32, Vec<PropMap>)> =
+            reply.and_then(|m| m.read1().ok()).unwrap_or_default();
+        if groups.iter().any(|(_, _, items)| !items.is_empty()) {
+            found.insert(window.clone());
+        }
+    }
+    found
 }
 
 /// Subscribes to group 0 and every group it references, then unsubscribes.

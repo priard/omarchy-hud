@@ -54,6 +54,7 @@ becomes the way into their menus. Qt offers no switch to keep both. Omarchy's de
 ```bash
 omarchy-hud                      # menu for the focused window
 omarchy-hud --list --pid 1234    # print the commands of a process
+omarchy-hud --list --window 0x55e5787d28f0   # of a window, as in hyprctl clients
 omarchy-hud --run "File › Save" --pid 1234
 ```
 
