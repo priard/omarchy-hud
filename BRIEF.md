@@ -76,6 +76,9 @@ gdbus call --session -d <unique> -o /MenuBar/2 -m com.canonical.dbusmenu.Event <
    (only the app-side Qt::AA_DontUseNativeMenuBar), so the service is opt-in.
 3. GTK4 does not export hamburger menus, only actions (names, no labels).
    Labels come from names ("toggle-sidebar" → "Toggle sidebar"); when org.gtk.Menus exists, its labels win.
+   Since 0.3: labels are read from the GtkBuilder .ui files in the binary's `.gresource.*` ELF
+   section (GVDB, often zlib-compressed) and translated with /usr/share/locale/<lang>/LC_MESSAGES/<exe>.mo.
+   Nautilus: 12 of 19 commands get a translated label.
 4. Several windows of one app (/window/1, /window/2) can't be matched to Hyprland's focused window.
    MVP: app actions + the first window; heuristics later.
 5. Dynamic dbusmenu menus (recent files etc.) need AboutToShow before GetLayout.
@@ -99,7 +102,7 @@ or dbusmenu with its commands, so the HUD handles them with no extra code.
 1. ~~GTK MVP (Xournal++ = org.gtk.Menus, Nautilus/Evince = org.gtk.Actions) + D-Bus test.~~ Done in 0.1.0.
 2. ~~Launcher choice~~ (`omarchy-menu-select`) and binding (open).
 3. ~~Qt: decide QT_QPA_PLATFORMTHEME, ship the registrar service.~~ Done: no theme change needed, registrar is opt-in.
-4. Labels for GTK4 actions, multiple windows, dynamic menus.
+4. ~~Labels for GTK4 actions~~ (done), multiple windows, dynamic menus.
 5. Convention for Omarchy apps.
 6. ~~Unverified: LibreOffice, native KDE apps.~~ Both work (LibreOffice Writer, Kdenlive).
 

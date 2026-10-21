@@ -6,10 +6,10 @@
 use std::collections::HashMap;
 use std::ffi::CString;
 
+use dbus::Message;
 use dbus::channel::{BusType, Channel};
 use dbus::message::MessageType;
 use dbus::strings::{ErrorName, Path};
-use dbus::Message;
 
 const NAME: &str = "com.canonical.AppMenu.Registrar";
 const PATH: &str = "/com/canonical/AppMenu/Registrar";
@@ -26,18 +26,28 @@ const INTROSPECTION: &str = r#"<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS 
 </node>"#;
 
 pub fn run() -> Result<(), String> {
-    let channel = Channel::get_private(BusType::Session).map_err(|e| format!("session bus: {e}"))?;
+    let channel =
+        Channel::get_private(BusType::Session).map_err(|e| format!("session bus: {e}"))?;
     // DO_NOT_QUEUE: if another registrar (e.g. KDE's) runs, leave it be.
-    let request = Message::new_method_call("org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus", "RequestName")?
-        .append2(NAME, 4u32);
-    let reply = channel.send_with_reply_and_block(request, std::time::Duration::from_secs(5)).map_err(|e| e.to_string())?;
+    let request = Message::new_method_call(
+        "org.freedesktop.DBus",
+        "/org/freedesktop/DBus",
+        "org.freedesktop.DBus",
+        "RequestName",
+    )?
+    .append2(NAME, 4u32);
+    let reply = channel
+        .send_with_reply_and_block(request, std::time::Duration::from_secs(5))
+        .map_err(|e| e.to_string())?;
     if reply.read1::<u32>() != Ok(1) {
         return Ok(());
     }
 
     let mut windows: HashMap<u32, (String, Path<'static>)> = HashMap::new();
     loop {
-        channel.read_write(None).map_err(|_| "lost the session bus")?;
+        channel
+            .read_write(None)
+            .map_err(|_| "lost the session bus")?;
         while let Some(msg) = channel.pop_message() {
             if msg.msg_type() != MessageType::MethodCall {
                 continue;
@@ -60,7 +70,11 @@ fn answer(msg: &Message, windows: &mut HashMap<u32, (String, Path<'static>)>) ->
                 windows.insert(id, (sender.to_string(), path.into_static()));
                 msg.method_return()
             }
-            _ => error(msg, "org.freedesktop.DBus.Error.InvalidArgs", "expected (uo)"),
+            _ => error(
+                msg,
+                "org.freedesktop.DBus.Error.InvalidArgs",
+                "expected (uo)",
+            ),
         },
         "UnregisterWindow" if on_registrar => {
             if let Some(id) = msg.get1::<u32>() {
@@ -68,14 +82,28 @@ fn answer(msg: &Message, windows: &mut HashMap<u32, (String, Path<'static>)>) ->
             }
             msg.method_return()
         }
-        "GetMenuForWindow" if on_registrar => match msg.get1::<u32>().and_then(|id| windows.get(&id)) {
+        "GetMenuForWindow" if on_registrar => match msg
+            .get1::<u32>()
+            .and_then(|id| windows.get(&id))
+        {
             Some((service, path)) => msg.method_return().append2(service.as_str(), path.clone()),
-            None => error(msg, "com.canonical.AppMenu.Registrar.Error.NotFound", "no menu for this window"),
+            None => error(
+                msg,
+                "com.canonical.AppMenu.Registrar.Error.NotFound",
+                "no menu for this window",
+            ),
         },
-        _ => error(msg, "org.freedesktop.DBus.Error.UnknownMethod", "unknown method"),
+        _ => error(
+            msg,
+            "org.freedesktop.DBus.Error.UnknownMethod",
+            "unknown method",
+        ),
     }
 }
 
 fn error(msg: &Message, name: &'static str, text: &str) -> Message {
-    msg.error(&ErrorName::from(name), &CString::new(text).unwrap_or_default())
+    msg.error(
+        &ErrorName::from(name),
+        &CString::new(text).unwrap_or_default(),
+    )
 }

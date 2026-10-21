@@ -21,7 +21,12 @@ fn main() {
         let (mut wall, mut cpu, mut rss) = (vec![], vec![], vec![]);
         for _ in 0..runs {
             let start = Instant::now();
-            let child = Command::new(command).args(["--pid", pid, "--list"]).stdout(Stdio::null()).process_group(0).spawn().expect("spawn");
+            let child = Command::new(command)
+                .args(["--pid", pid, "--list"])
+                .stdout(Stdio::null())
+                .process_group(0)
+                .spawn()
+                .expect("spawn");
             let mut usage: libc::rusage = unsafe { std::mem::zeroed() };
             let mut status = 0;
             unsafe { libc::wait4(child.id() as i32, &mut status, 0, &mut usage) };

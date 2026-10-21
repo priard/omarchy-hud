@@ -7,6 +7,9 @@ and the project uses [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Labels for GTK4 apps without a menubar come from the GtkBuilder files compiled into
+  the app and its gettext catalog, so Nautilus shows "Nowa karta" instead of "New tab".
+  Parameterized actions from those menus work too.
 - Recently picked commands come first, per app (10 each, in
   `$XDG_STATE_HOME/omarchy-hud/recent`). Only menu picks count, not `--run`.
 - `omarchy-hud registrar` and `dist/omarchy-hud-registrar.service`: a tiny AppMenu registrar

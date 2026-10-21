@@ -1,6 +1,7 @@
 //! omarchy-hud: search and run the menu commands of the focused window.
 
 mod bus;
+mod labels;
 mod menus;
 mod recent;
 mod registrar;
@@ -38,7 +39,13 @@ fn run() -> Result<ExitCode, String> {
     let mut args = env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
-            "--pid" => pid = Some(args.next().and_then(|p| p.parse().ok()).ok_or("--pid needs a number")?),
+            "--pid" => {
+                pid = Some(
+                    args.next()
+                        .and_then(|p| p.parse().ok())
+                        .ok_or("--pid needs a number")?,
+                )
+            }
             "--list" => list = true,
             "--run" => label = Some(args.next().ok_or("--run needs a label")?),
             "registrar" => return registrar::run().map(|_| ExitCode::SUCCESS),
@@ -65,7 +72,11 @@ fn run() -> Result<ExitCode, String> {
     if list {
         let mut out = std::io::stdout().lock();
         for c in &commands {
-            let _ = if c.accel.is_empty() { writeln!(out, "{}", c.label) } else { writeln!(out, "{}\t{}", c.label, c.accel) };
+            let _ = if c.accel.is_empty() {
+                writeln!(out, "{}", c.label)
+            } else {
+                writeln!(out, "{}\t{}", c.label, c.accel)
+            };
         }
         return Ok(ExitCode::SUCCESS);
     }
@@ -83,7 +94,10 @@ fn run() -> Result<ExitCode, String> {
             None => return Ok(ExitCode::SUCCESS),
         },
     };
-    let command = commands.iter().find(|c| c.label == label).ok_or_else(|| format!("no command {label:?}"))?;
+    let command = commands
+        .iter()
+        .find(|c| c.label == label)
+        .ok_or_else(|| format!("no command {label:?}"))?;
     menus::activate(&bus, &command.action)?;
     Ok(ExitCode::SUCCESS)
 }
@@ -92,7 +106,8 @@ fn run() -> Result<ExitCode, String> {
 fn focused_pid() -> Result<u32, String> {
     let dir = env::var("XDG_RUNTIME_DIR").map_err(|_| "XDG_RUNTIME_DIR is not set")?;
     let sig = env::var("HYPRLAND_INSTANCE_SIGNATURE").map_err(|_| "not running under Hyprland")?;
-    let mut sock = UnixStream::connect(format!("{dir}/hypr/{sig}/.socket.sock")).map_err(|e| format!("hyprland socket: {e}"))?;
+    let mut sock = UnixStream::connect(format!("{dir}/hypr/{sig}/.socket.sock"))
+        .map_err(|e| format!("hyprland socket: {e}"))?;
     sock.write_all(b"activewindow").map_err(|e| e.to_string())?;
     let mut reply = String::new();
     sock.read_to_string(&mut reply).map_err(|e| e.to_string())?;
@@ -116,7 +131,13 @@ fn pick(commands: &[menus::Command]) -> Result<Option<String>, String> {
     // A leading tab means "no icon"; the accel shows as subtext and comes back after a tab.
     let options: Vec<String> = commands
         .iter()
-        .map(|c| if c.accel.is_empty() { format!("\t{}", c.label) } else { format!("\t{}\t{}", c.label, c.accel) })
+        .map(|c| {
+            if c.accel.is_empty() {
+                format!("\t{}", c.label)
+            } else {
+                format!("\t{}\t{}", c.label, c.accel)
+            }
+        })
         .map(|o| json_string(&o))
         .collect();
     let payload = format!(
@@ -138,7 +159,12 @@ fn pick(commands: &[menus::Command]) -> Result<Option<String>, String> {
     }
     let picked = fs::read_to_string(&selection).ok();
     let _ = (fs::remove_file(&selection), fs::remove_file(&done));
-    Ok(picked.and_then(|s| s.trim_end_matches('\n').split('\t').next().map(str::to_owned)))
+    Ok(picked.and_then(|s| {
+        s.trim_end_matches('\n')
+            .split('\t')
+            .next()
+            .map(str::to_owned)
+    }))
 }
 
 fn json_string(s: &str) -> String {
@@ -162,7 +188,10 @@ fn json_string(s: &str) -> String {
 mod tests {
     #[test]
     fn json_string_escapes() {
-        assert_eq!(super::json_string("a\t\"b\"\\\u{1}"), r#""a\t\"b\"\\\u0001""#);
+        assert_eq!(
+            super::json_string("a\t\"b\"\\\u{1}"),
+            r#""a\t\"b\"\\\u0001""#
+        );
         assert_eq!(super::json_string("Plik › Zapisz"), "\"Plik › Zapisz\"");
     }
 }
