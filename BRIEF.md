@@ -79,12 +79,12 @@ gdbus call --session -d <unique> -o /MenuBar/2 -m com.canonical.dbusmenu.Event <
 7. Moving PIDs: Electron and some apps hold D-Bus connections in child processes,
    so check the PID's children too. Note: `setsid app & echo $!` does NOT give the app's PID.
 
-## Architecture (MVP, implemented in 0.1.0)
-CLI `omarchy-hud` (Python + gi/Gio, no new dependencies):
+## Architecture (MVP in 0.1.0 in Python, rewritten in Rust in 0.2.0)
+CLI `omarchy-hud` (Rust, `dbus` crate over libdbus):
 1. Focused window's PID (hyprctl), D-Bus connections of the process and its children.
 2. Collects items from three sources: org.gtk.Menus (labels + action), org.gtk.Actions (app./win.),
    com.canonical.dbusmenu (Qt/KDE). Output: a flat list "File › Export as PDF", enabled/visible only.
-3. Shows it in the Omarchy menu (`omarchy-menu-select`, built-in fuzzy search).
+3. Shows it in the Omarchy menu (the `omarchy.menu` select payload via `omarchy-shell`, built-in fuzzy search).
 4. Selection → org.gtk.Actions.Activate or dbusmenu Event "clicked".
 5. Binding in ~/.config/hypr (not in default/).
 

@@ -6,9 +6,17 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-22
+
+### Changed
+- Rewritten in Rust: the menu shows up in 27 ms instead of 181 ms, collecting commands
+  takes 2–6 ms instead of 80–130 ms and peaks at 3 MB of RAM instead of 31 MB.
+  See Performance in the README.
+- The menu payload goes straight to `omarchy-shell` instead of through `omarchy-menu-select`.
+- The focused window comes from Hyprland's socket instead of `hyprctl`.
+
 ### Fixed
-- Opening the HUD no longer waits 0.5 s for app connections that never answer D-Bus
-  (Xournal++: 580 ms → 130 ms).
+- Opening the HUD no longer waits for app connections that never answer D-Bus.
 
 ## [0.1.0] - 2026-10-21
 

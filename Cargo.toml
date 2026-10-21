@@ -1,0 +1,16 @@
+[package]
+name = "omarchy-hud"
+version = "0.2.0"
+edition = "2024"
+
+[dependencies]
+dbus = "0.9.12"
+
+[dev-dependencies]
+libc = "0.2.191"
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
