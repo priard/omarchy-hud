@@ -8,7 +8,7 @@ the commands from that app's menus, hit Enter to run one.
 > internals (the menu's private payload, Hyprland's Lua dispatchers) that can change under it.
 > Not affiliated with Omarchy.
 
-![The HUD over Flea, Omarchy's file manager, listing its commands with their shortcuts](docs/screenshot.png)
+![The HUD open over RAWmakase's Develop view, listing its commands with their shortcuts](docs/screenshot.png)
 
 It reads menus straight from D-Bus (`org.gtk.Menus`, `org.gtk.Actions`,
 `com.canonical.dbusmenu`), finding the focused app's connections by PID, so it needs

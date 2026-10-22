@@ -110,6 +110,30 @@ pub fn chord(accel: &str) -> Option<(String, String)> {
     Some((mods.join(" "), key.to_string()))
 }
 
+/// 'Ctrl+slash' -> 'Ctrl+/': xkb names of punctuation read as the key itself.
+pub fn display(accel: &str) -> String {
+    accel
+        .split('+')
+        .map(|part| match part {
+            "slash" => "/",
+            "backslash" => "\\",
+            "comma" => ",",
+            "period" => ".",
+            "equal" => "=",
+            "minus" => "-",
+            "apostrophe" => "'",
+            "grave" => "`",
+            "bracketleft" => "[",
+            "bracketright" => "]",
+            "Page_Up" => "PgUp",
+            "Page_Down" => "PgDn",
+            "Escape" => "Esc",
+            part => part,
+        })
+        .collect::<Vec<_>>()
+        .join("+")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -129,6 +153,14 @@ History = Ctrl+H
         assert_eq!(parse(PACK, "Zen"), [("New tab".into(), "Ctrl+T".into())]);
         assert_eq!(parse(PACK, "chromium"), [("History".into(), "Ctrl+H".into())]);
         assert!(parse(PACK, "foot").is_empty());
+    }
+
+    #[test]
+    fn display_reads_punctuation_as_keys() {
+        assert_eq!(display("Ctrl+slash"), "Ctrl+/");
+        assert_eq!(display("Ctrl+Shift+bracketright"), "Ctrl+Shift+]");
+        assert_eq!(display("Ctrl+Page_Down"), "Ctrl+PgDn");
+        assert_eq!(display("Shift+F5"), "Shift+F5");
     }
 
     #[test]

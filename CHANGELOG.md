@@ -6,6 +6,10 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Pack shortcuts show punctuation as the key itself: `Ctrl+/` instead of `Ctrl+slash`.
+- README screenshot: the HUD over RAWmakase.
+
 ## [0.5.0] - 2026-10-22
 
 ### Added

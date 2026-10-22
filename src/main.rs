@@ -79,11 +79,11 @@ fn run() -> Result<ExitCode, String> {
             if !commands.iter().any(|c| c.label == label) {
                 commands.push(menus::Command {
                     label,
+                    accel: shortcuts::display(&accel),
                     action: menus::Action::Shortcut {
                         window: window.address.clone(),
-                        accel: accel.clone(),
+                        accel,
                     },
-                    accel,
                 });
             }
         }
