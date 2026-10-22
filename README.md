@@ -3,12 +3,30 @@
 A Unity-style HUD for [Omarchy](https://omarchy.org): press a key on any window, fuzzy-search
 the commands from that app's menus, hit Enter to run one.
 
+> **Proof of concept.** This is an experiment in what a HUD on Omarchy could look like, built
+> in a couple of days. It works on the author's machine every day, but it leans on Omarchy
+> internals (the menu's private payload, Hyprland's Lua dispatchers) that can change under it.
+> Not affiliated with Omarchy.
+
+![The HUD over Flea, Omarchy's file manager, listing its commands with their shortcuts](docs/screenshot.png)
+
 It reads menus straight from D-Bus (`org.gtk.Menus`, `org.gtk.Actions`,
 `com.canonical.dbusmenu`), finding the focused app's connections by PID, so it needs
 no Hyprland plugin and no app changes. Media players get their MPRIS playback controls,
-and apps with no exported menu (browsers, Thunderbird, Omarchy's own apps) get commands
+and apps with no exported menu (browsers, Thunderbird, Omarchy's own apps, RAWmakase) get commands
 from shortcut packs that send the app's own key chords. It is a single Rust binary that lives only while
 the menu is open: about 6 ms and 3 MB of RAM to collect a menu of 150 commands.
+
+## Where the idea comes from
+
+Ubuntu 12.04 shipped [Unity's HUD](https://en.wikipedia.org/wiki/Unity_(user_interface))
+in 2012: tap Alt, type what you want, and run any command from the focused app's menus without
+hunting through them. It went away with Unity in 2017, while the same idea won everywhere else
+as the command palette (Sublime Text, VS Code, KDE's `KCommandBar` on Ctrl+Alt+I, the
+[Plotinus](https://github.com/p-e-w/plotinus) palette for GTK). Omarchy is keyboard-first and
+already has a fast fuzzy menu, so the missing piece was getting the commands out of the apps.
+Most Linux apps still describe their menus on D-Bus for global menus, which is where this
+starts; for the apps that don't, see [making an app work with the HUD](docs/integration.md).
 
 ## Status
 
@@ -18,8 +36,9 @@ the menu is open: about 6 ms and 3 MB of RAM to collect a menu of 150 commands.
 | LibreOffice | yes | its GTK3 menubar, per window |
 | GTK apps without a menubar (Nautilus, Evince) | yes | labels and translations read from the app's built-in menus; the rest from action names |
 | Qt and KDE apps (OBS, Kdenlive) | opt-in | needs the registrar service, which hides their in-window menubars; see below |
-| Firefox, Zen, Chromium, Thunderbird, Flea | shortcut packs | their own keyboard shortcuts, sent to the window; see below |
+| Firefox, Zen, Chromium, Thunderbird, Flea, RAWmakase | shortcut packs | their own keyboard shortcuts, sent to the window; see below |
 | Media players (Spotify and anything with MPRIS) | playback | Play/Pause, Next, Previous, Stop, next to the app's own menu |
+| Apps that export the HUD's own command list | yes | see [docs/integration.md](docs/integration.md) |
 | Other Electron apps, terminals | no | they export no menus on Wayland; add a shortcut pack |
 
 ## Install
@@ -36,6 +55,21 @@ Bind it in `~/.config/hypr/bindings.lua` (`SUPER + ALT + SPACE` is taken by Omar
 ```lua
 o.bind("SUPER + ALT + M", "HUD", "omarchy-hud")
 ```
+
+### Menu over the window
+
+Omarchy's menu always opens in the middle of the screen, which on a wide monitor can be far
+from the window the commands are for. `dist/menu/install` installs `omarchy-hud.menu`, a copy
+of Omarchy's menu plugin with [one small patch](dist/menu/menu-anchor.patch) that centers it on
+a given rectangle; the HUD then opens over the focused window. Only the HUD uses it, Omarchy's
+own menu is left alone, and without it the HUD falls back to Omarchy's menu.
+
+```bash
+dist/menu/install              # again after an Omarchy update, to follow its menu
+dist/menu/install --uninstall
+```
+
+The patch is proposed upstream; once Omarchy's menu takes an `anchor`, the copy can go.
 
 ### Qt and KDE apps
 
@@ -81,7 +115,8 @@ Jump to unread channel = Alt+Shift+Up
 ```
 
 Modifiers are `Ctrl`, `Shift`, `Alt` and `Super`; keys are xkb names (`T`, `F5`,
-`Delete`, `equal`, `Page_Down`). Packs need a window, so `--pid` skips them.
+`Delete`, `equal`, `Page_Down`). Packs need a window, so `--pid` skips them. Apps can ship
+their own pack in `/usr/share/omarchy-hud/shortcuts/`; see [docs/integration.md](docs/integration.md).
 
 ## Development
 

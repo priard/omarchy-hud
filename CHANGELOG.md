@@ -6,6 +6,21 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-10-22
+
+### Added
+- The menu opens over the focused window instead of the middle of the screen, with
+  `dist/menu/install`: a copy of Omarchy's menu plugin (`omarchy-hud.menu`) plus
+  `menu-anchor.patch`, which centers the menu on a rectangle the HUD sends. Only the HUD
+  summons it; without it the HUD falls back to Omarchy's menu. The patch is proposed upstream.
+- `io.github.priard.OmarchyHud.Commands1`, a two-method D-Bus interface (`List`, `Activate`)
+  for apps without a menu model, with a GDBus example in `docs/examples/`.
+- Shortcut packs installed by apps in `$XDG_DATA_HOME` and `$XDG_DATA_DIRS`
+  (`omarchy-hud/shortcuts/*.conf`), between the user's packs and the built-in ones.
+- A built-in pack for RAWmakase (74 commands, from its shortcut reference).
+- `docs/integration.md`: every way an app can offer its commands to the HUD.
+- README: a screenshot, where the idea comes from, and a proof-of-concept notice.
+
 ## [0.4.0] - 2026-10-22
 
 ### Added
