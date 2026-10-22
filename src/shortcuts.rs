@@ -1,7 +1,8 @@
 //! Shortcut packs: commands for apps that export no menu, run by sending their key chord
 //! to the window. Packs are `[class class...]` sections of `Label = Ctrl+Shift+T` lines;
-//! the built-in ones live in packs/, the user's in $XDG_CONFIG_HOME/omarchy-hud/shortcuts/
-//! and win over built-in lines with the same label.
+//! the built-in ones live in packs/. Earlier sources win for the same label: the user's
+//! $XDG_CONFIG_HOME/omarchy-hud/shortcuts/, then packs apps install in
+//! $XDG_DATA_HOME and $XDG_DATA_DIRS (omarchy-hud/shortcuts/), then the built-in ones.
 
 use std::path::PathBuf;
 use std::{env, fs};
@@ -10,6 +11,7 @@ const BUILTIN: &[&str] = &[
     include_str!("../packs/chromium.conf"),
     include_str!("../packs/firefox.conf"),
     include_str!("../packs/flea.conf"),
+    include_str!("../packs/rawmakase.conf"),
     include_str!("../packs/thunderbird.conf"),
 ];
 
@@ -34,36 +36,52 @@ pub fn parse(text: &str, class: &str) -> Vec<(String, String)> {
     out
 }
 
-fn user_packs() -> Vec<String> {
-    let Some(dir) = env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
-        .map(|c| c.join("omarchy-hud/shortcuts"))
-    else {
-        return vec![];
+/// Pack directories, most important first.
+fn pack_dirs() -> Vec<PathBuf> {
+    let home = env::var_os("HOME").map(PathBuf::from);
+    let var = |name: &str, fallback: &str| {
+        env::var_os(name)
+            .filter(|v| !v.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| home.as_ref().map(|h| h.join(fallback)))
     };
-    let Ok(entries) = fs::read_dir(dir) else {
-        return vec![];
-    };
-    let mut paths: Vec<PathBuf> = entries
+    let data_dirs = env::var("XDG_DATA_DIRS")
+        .ok()
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "/usr/local/share:/usr/share".into());
+    [var("XDG_CONFIG_HOME", ".config"), var("XDG_DATA_HOME", ".local/share")]
+        .into_iter()
         .flatten()
-        .map(|e| e.path())
-        .filter(|p| p.extension().is_some_and(|e| e == "conf"))
-        .collect();
-    paths.sort();
-    paths
-        .iter()
-        .filter_map(|p| fs::read_to_string(p).ok())
+        .chain(data_dirs.split(':').map(PathBuf::from))
+        .map(|d| d.join("omarchy-hud/shortcuts"))
         .collect()
 }
 
-/// The window class's commands, the user's first.
+fn installed_packs() -> Vec<String> {
+    let mut packs = Vec::new();
+    for dir in pack_dirs() {
+        let Ok(entries) = fs::read_dir(dir) else {
+            continue;
+        };
+        let mut paths: Vec<PathBuf> = entries
+            .flatten()
+            .map(|e| e.path())
+            .filter(|p| p.extension().is_some_and(|e| e == "conf"))
+            .collect();
+        paths.sort();
+        packs.extend(paths.iter().filter_map(|p| fs::read_to_string(p).ok()));
+    }
+    packs
+}
+
+/// The window class's commands, the most important source first.
 pub fn for_class(class: &str) -> Vec<(String, String)> {
     if class.is_empty() {
         return vec![];
     }
-    let user = user_packs();
-    user.iter()
+    let installed = installed_packs();
+    installed
+        .iter()
         .map(String::as_str)
         .chain(BUILTIN.iter().copied())
         .flat_map(|text| parse(text, class))
