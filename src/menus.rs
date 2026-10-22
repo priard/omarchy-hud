@@ -1,6 +1,7 @@
 //! Finds an app's menus on D-Bus by PID and flattens them into commands.
 //! Sources: org.gtk.Menus (GTK menubars), org.gtk.Actions (GTK without a menubar)
-//! and com.canonical.dbusmenu (Qt/KDE), plus MPRIS playback controls for media players.
+//! com.canonical.dbusmenu (Qt/KDE) and the HUD's own flat command list (docs/integration.md),
+//! plus MPRIS playback controls for media players.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -17,6 +18,7 @@ const SEP: &str = " › ";
 const GTK_MENUS: &str = "org.gtk.Menus";
 const GTK_ACTIONS: &str = "org.gtk.Actions";
 const DBUSMENU: &str = "com.canonical.dbusmenu";
+const HUD_COMMANDS: &str = "io.github.priard.OmarchyHud.Commands1";
 const DBUS: &str = "org.freedesktop.DBus";
 const INTROSPECTABLE: &str = "org.freedesktop.DBus.Introspectable";
 const DBUS_PROPERTIES: &str = "org.freedesktop.DBus.Properties";
@@ -53,6 +55,11 @@ pub enum Action {
         name: String,
         method: &'static str,
     },
+    HudCommand {
+        name: String,
+        path: String,
+        id: String,
+    },
     /// A key chord sent to the window (see shortcuts).
     Shortcut {
         window: String,
@@ -86,6 +93,9 @@ pub fn activate(bus: &Bus, action: &Action) -> Result<(), String> {
                 "Event",
                 (*id, "clicked", Variant(0i32), 0u32),
             )?;
+        }
+        Action::HudCommand { name, path, id } => {
+            bus.call(name, path, HUD_COMMANDS, "Activate", (id.as_str(),))?;
         }
         Action::Mpris { name, method } => {
             bus.call(name, MPRIS_PATH, MPRIS_PLAYER, method, ())?;
@@ -149,6 +159,13 @@ fn commands_from(
             .map(|(p, _)| p)
         {
             found.extend(dbusmenu_commands(bus, &name, path));
+        }
+        for path in objects
+            .iter()
+            .filter(|(_, ifs)| ifs.iter().any(|i| i == HUD_COMMANDS))
+            .map(|(p, _)| p)
+        {
+            found.extend(hud_commands(bus, &name, path));
         }
         commands.extend(found.into_iter().filter(|c| seen.insert(c.label.clone())));
     }
@@ -703,6 +720,28 @@ pub fn walk_dbusmenu(
         }
         path.pop();
     }
+}
+
+/// An app's own flat list: List() -> a(sss) of (id, label, accel).
+fn hud_commands(bus: &Bus, name: &str, path: &str) -> Vec<Command> {
+    let Ok(list) = bus
+        .call(name, path, HUD_COMMANDS, "List", ())
+        .and_then(|r| r.read1::<Vec<(String, String, String)>>().map_err(|e| e.to_string()))
+    else {
+        return vec![];
+    };
+    list.into_iter()
+        .filter(|(_, label, _)| !label.is_empty())
+        .map(|(id, label, accel)| Command {
+            label,
+            accel,
+            action: Action::HudCommand {
+                name: name.to_string(),
+                path: path.to_string(),
+                id,
+            },
+        })
+        .collect()
 }
 
 /// Playback controls the player says it supports.
