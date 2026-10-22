@@ -1,6 +1,8 @@
---- a/shell/plugins/menu/Menu.qml
-+++ b/shell/plugins/menu/Menu.qml
-@@ -82,6 +82,9 @@
+diff --git c/shell/plugins/menu/Menu.qml w/shell/plugins/menu/Menu.qml
+index 7189cce0..7233db05 100644
+--- c/shell/plugins/menu/Menu.qml
++++ w/shell/plugins/menu/Menu.qml
+@@ -85,6 +85,9 @@ Item {
    property string doneFile: ""
    property int dmenuWidth: 300
    property int dmenuMaxHeight: 0
@@ -10,17 +12,15 @@
    property bool requestActive: false
    property bool rowsLoaded: false
    property string activeMenu: "root"
-@@ -982,6 +985,9 @@
+@@ -992,6 +995,7 @@ Item {
      requestActive = !!doneFile
      dmenuWidth = Math.max(1, Number(payload.width || 300))
      dmenuMaxHeight = Math.max(0, Number(payload.maxHeight || 0))
-+    var anchor = payload.anchor
-+    dmenuAnchor = anchor && [anchor.x, anchor.y, anchor.width, anchor.height].every(isFinite)
-+      && anchor.width > 0 && anchor.height > 0 ? anchor : null
++    dmenuAnchor = MenuModel.dmenuAnchor(payload.anchor)
      activeMenu = "root"
      navStack = []
      filterText = ""
-@@ -1273,7 +1279,14 @@
+@@ -1283,7 +1287,14 @@ Item {
      // card may grow from there. Closing or changing screens unfreezes both.
      property int cardTop: -1
      property int maxRowsHeight: -1
@@ -36,7 +36,7 @@
      readonly property int effectiveCardTop: cardTop >= 0 ? cardTop : centeredTop
      function freezeCardTop() {
        if (shown && cardTop < 0) {
-@@ -1299,7 +1312,9 @@
+@@ -1309,7 +1320,9 @@ Item {
        width: root.cardWidth
        height: Math.min(root.cardHeight, panel.height - Style.gapsOut - panel.effectiveCardTop)
        radius: root.cornerRadius
@@ -47,3 +47,33 @@
        y: panel.effectiveCardTop
        color: root.background
        borderSpec: root.borderSpec
+diff --git c/shell/plugins/menu/MenuModel.js w/shell/plugins/menu/MenuModel.js
+index c6c75f25..87bebb64 100644
+--- c/shell/plugins/menu/MenuModel.js
++++ w/shell/plugins/menu/MenuModel.js
+@@ -642,6 +642,17 @@ function dmenuSelections(options, selected, preserveOrder) {
+   })
+ }
+ 
++// A select or input payload's anchor, {x, y, width, height} in the screen's
++// logical coordinates, or null unless every field is a finite number and the
++// rectangle has an area. Strings would concatenate instead of adding up.
++function dmenuAnchor(anchor) {
++  if (!anchor || typeof anchor !== "object") return null
++  var fields = [anchor.x, anchor.y, anchor.width, anchor.height]
++  var numbers = fields.every(function(value) { return typeof value === "number" && isFinite(value) })
++  if (!numbers || anchor.width <= 0 || anchor.height <= 0) return null
++  return { x: anchor.x, y: anchor.y, width: anchor.width, height: anchor.height }
++}
++
+ function toggleDmenuSelection(selected, value) {
+   return selected.indexOf(value) === -1 ? selected.concat([value])
+     : selected.filter(function(item) { return item !== value })
+@@ -717,6 +728,7 @@ if (typeof module !== "undefined") {
+     searchScore: searchScore,
+     dmenuValue: dmenuValue,
+     dmenuSelections: dmenuSelections,
++    dmenuAnchor: dmenuAnchor,
+     toggleDmenuSelection: toggleDmenuSelection,
+     displayRow: displayRow,
+     applyTranslations: applyTranslations
