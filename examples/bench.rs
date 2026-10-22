@@ -2,7 +2,7 @@
 //! Written in Rust so the parent stays small: a forked child inherits the parent's
 //! peak RSS, which would hide a small binary's real footprint.
 //!
-//! usage: cargo run --release --example bench -- RUNS PID COMMAND [COMMAND...]
+//! usage: cargo run --release --example bench -- RUNS PID|WINDOW COMMAND [COMMAND...]
 //! Each COMMAND runs as `COMMAND --pid PID --list`.
 
 use std::os::unix::process::CommandExt;
@@ -17,12 +17,14 @@ fn median(mut v: Vec<f64>) -> f64 {
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let (runs, pid) = (args[0].parse::<usize>().expect("RUNS"), &args[1]);
+    // A Hyprland window address also exercises the window lookup and shortcut packs.
+    let target = if pid.parse::<u32>().is_ok() { "--pid" } else { "--window" };
     for command in &args[2..] {
         let (mut wall, mut cpu, mut rss) = (vec![], vec![], vec![]);
         for _ in 0..runs {
             let start = Instant::now();
             let child = Command::new(command)
-                .args(["--pid", pid, "--list"])
+                .args([target, pid, "--list"])
                 .stdout(Stdio::null())
                 .process_group(0)
                 .spawn()

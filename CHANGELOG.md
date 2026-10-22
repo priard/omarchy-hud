@@ -6,6 +6,23 @@ and the project uses [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-22
+
+### Added
+- MPRIS playback controls (Play/Pause, Next track, Previous track, Stop) for any app that
+  owns an `org.mpris.MediaPlayer2.*` name, shown only when the player says it can do them.
+  Spotify had only its tray menu before.
+- Shortcut packs: commands for apps that export no menu, run by sending the app's own key
+  chord to its window through Hyprland. Built-in packs for Firefox and its forks (with Zen's
+  own chords), Chromium-based browsers, Thunderbird and Flea, taken from the apps' sources
+  where they ship them. User packs in `~/.config/omarchy-hud/shortcuts/*.conf` add commands
+  or override built-in ones by label.
+- The bench example takes a window address as well as a pid.
+
+### Changed
+- Running a pack command focuses its window first, so `--run` with `--window` now focuses
+  that window.
+
 ## [0.3.0] - 2026-10-22
 
 ### Added

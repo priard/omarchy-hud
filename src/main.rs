@@ -6,6 +6,7 @@ mod labels;
 mod menus;
 mod recent;
 mod registrar;
+mod shortcuts;
 
 use std::io::Write;
 use std::path::PathBuf;
@@ -64,12 +65,29 @@ fn run() -> Result<ExitCode, String> {
         }
     }
 
-    let (pid, focus) = match pid {
-        Some(pid) => (pid, None),
-        None => hypr::window(window.as_deref())?,
+    let (pid, focus, window) = match pid {
+        Some(pid) => (pid, None, None),
+        None => {
+            let (window, focus) = hypr::window(window.as_deref())?;
+            (window.pid, focus, Some(window))
+        }
     };
     let bus = bus::Bus::session()?;
     let mut commands = menus::collect(&bus, pid, focus);
+    if let Some(window) = window {
+        for (label, accel) in shortcuts::for_class(&window.class) {
+            if !commands.iter().any(|c| c.label == label) {
+                commands.push(menus::Command {
+                    label,
+                    action: menus::Action::Shortcut {
+                        window: window.address.clone(),
+                        accel: accel.clone(),
+                    },
+                    accel,
+                });
+            }
+        }
+    }
     let app = recent::app_key(pid);
     recent::promote(&mut commands, |c| c.label.as_str(), &recent::labels(&app));
 
@@ -87,7 +105,10 @@ fn run() -> Result<ExitCode, String> {
     let label = match label {
         Some(label) => label,
         None if commands.is_empty() => {
-            bus.notify("omarchy-hud", "This app exports no menu commands");
+            bus.notify(
+                "omarchy-hud",
+                "This app exports no menu commands and has no shortcut pack",
+            );
             return Ok(ExitCode::FAILURE);
         }
         None => match pick(&commands)? {

@@ -7,6 +7,7 @@ use std::os::unix::net::UnixStream;
 
 pub struct Window {
     pub address: String,
+    pub class: String,
     pub pid: u32,
     pub floating: bool,
     pub stable_id: u64,
@@ -49,6 +50,7 @@ pub fn parse_windows(text: &str) -> Vec<Window> {
             };
             Some(Window {
                 address,
+                class: field("class").unwrap_or("").to_string(),
                 pid: field("pid")?.parse().ok()?,
                 floating: field("floating") == Some("1"),
                 stable_id: u64::from_str_radix(field("stableID").unwrap_or("0"), 16).unwrap_or(0),
@@ -73,8 +75,8 @@ pub fn focus_of(windows: &[Window], address: &str) -> Option<Focus> {
     })
 }
 
-/// The pid of the given window (an address, with or without 0x) or the focused one.
-pub fn window(address: Option<&str>) -> Result<(u32, Option<Focus>), String> {
+/// The given window (an address, with or without 0x) or the focused one.
+pub fn window(address: Option<&str>) -> Result<(Window, Option<Focus>), String> {
     let address = match address {
         Some(a) => a.trim_start_matches("0x").to_string(),
         None => {
@@ -85,13 +87,30 @@ pub fn window(address: Option<&str>) -> Result<(u32, Option<Focus>), String> {
                 .address
         }
     };
-    let windows = parse_windows(&request("clients")?);
-    let pid = windows
+    let mut windows = parse_windows(&request("clients")?);
+    let focus = focus_of(&windows, &address);
+    let i = windows
         .iter()
-        .find(|w| w.address == address)
-        .ok_or_else(|| format!("no window {address}"))?
-        .pid;
-    Ok((pid, focus_of(&windows, &address)))
+        .position(|w| w.address == address)
+        .ok_or_else(|| format!("no window {address}"))?;
+    Ok((windows.swap_remove(i), focus))
+}
+
+fn dispatch(call: &str) -> Result<(), String> {
+    match request(&format!("dispatch {call}"))?.trim() {
+        "ok" | "" => Ok(()),
+        error => Err(format!("{call}: {error}")),
+    }
+}
+
+/// Sends a key chord to the window. `mods` and `key` must already be validated
+/// (see shortcuts::chord), since they end up inside a Lua string.
+pub fn send_shortcut(address: &str, mods: &str, key: &str) -> Result<(), String> {
+    // Apps ignore keys while unfocused, and the menu may still hold focus as it closes.
+    dispatch(&format!(r#"hl.dsp.focus({{window = "address:0x{address}"}})"#))?;
+    dispatch(&format!(
+        r#"hl.dsp.send_shortcut({{mods = "{mods}", key = "{key}", window = "address:0x{address}"}})"#
+    ))
 }
 
 #[cfg(test)]
@@ -99,6 +118,7 @@ mod tests {
     use super::*;
 
     const CLIENTS: &str = "Window 55e578846200 -> Bez tytułu 1 — LibreOffice Writer:
+\tclass: libreoffice-writer
 \tfloating: 0
 \tpid: 42
 \tstableID: 18000101
@@ -123,6 +143,8 @@ Window 55e578605800 -> Mattermost:
     fn focus_counts_tiled_windows_of_the_app_in_creation_order() {
         let windows = parse_windows(CLIENTS);
         assert_eq!(windows.len(), 4);
+        assert_eq!(windows[0].class, "libreoffice-writer");
+        assert_eq!(windows[1].class, "");
         assert_eq!(
             focus_of(&windows, "55e5787d28f0"),
             Some(Focus { index: 1, count: 2 })

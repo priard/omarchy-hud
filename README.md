@@ -5,7 +5,9 @@ the commands from that app's menus, hit Enter to run one.
 
 It reads menus straight from D-Bus (`org.gtk.Menus`, `org.gtk.Actions`,
 `com.canonical.dbusmenu`), finding the focused app's connections by PID, so it needs
-no Hyprland plugin and no app changes. It is a single Rust binary that lives only while
+no Hyprland plugin and no app changes. Media players get their MPRIS playback controls,
+and apps with no exported menu (browsers, Thunderbird, Omarchy's own apps) get commands
+from shortcut packs that send the app's own key chords. It is a single Rust binary that lives only while
 the menu is open: about 6 ms and 3 MB of RAM to collect a menu of 150 commands.
 
 ## Status
@@ -16,7 +18,9 @@ the menu is open: about 6 ms and 3 MB of RAM to collect a menu of 150 commands.
 | LibreOffice | yes | its GTK3 menubar, per window |
 | GTK apps without a menubar (Nautilus, Evince) | yes | labels and translations read from the app's built-in menus; the rest from action names |
 | Qt and KDE apps (OBS, Kdenlive) | opt-in | needs the registrar service, which hides their in-window menubars; see below |
-| Electron, Chromium, Firefox, terminals | no | they export no menus on Wayland |
+| Firefox, Zen, Chromium, Thunderbird, Flea | shortcut packs | their own keyboard shortcuts, sent to the window; see below |
+| Media players (Spotify and anything with MPRIS) | playback | Play/Pause, Next, Previous, Stop, next to the app's own menu |
+| Other Electron apps, terminals | no | they export no menus on Wayland; add a shortcut pack |
 
 ## Install
 
@@ -60,6 +64,24 @@ omarchy-hud --run "File › Save" --pid 1234
 
 Commands you picked recently in an app come first, newest on top (kept in
 `~/.local/state/omarchy-hud/recent`, 10 per app).
+
+### Shortcut packs
+
+Apps that export no menu get commands from shortcut packs: picking one sends the app's
+own key chord to its window through Hyprland (`hl.dsp.send_shortcut`, after focusing the
+window, since apps ignore keys while unfocused). Built-in packs live in [`packs/`](packs)
+and are compiled into the binary. Add your own, or override a built-in line by its label,
+in `~/.config/omarchy-hud/shortcuts/*.conf`:
+
+```ini
+# Sections name window classes, as in hyprctl clients.
+[mattermost-desktop]
+Find = Ctrl+K
+Jump to unread channel = Alt+Shift+Up
+```
+
+Modifiers are `Ctrl`, `Shift`, `Alt` and `Super`; keys are xkb names (`T`, `F5`,
+`Delete`, `equal`, `Page_Down`). Packs need a window, so `--pid` skips them.
 
 ## Development
 
@@ -114,6 +136,10 @@ Where the time went, and what fixed it:
 5.8 ms CPU / 3.7 MB, Kdenlive (630) 14.5 ms / 7.3 ms CPU / 4.2 MB. Most of that is the apps
 answering; Kdenlive's menu is fetched twice because Qt fills dynamic submenus only on
 AboutToShow and does not say which ones changed. The registrar idles at 0.7 MB.
+
+0.4.0 (`--list --window`, median of 21): Thunderbird (28 pack commands) 2.4 ms / 2.0 ms CPU /
+3.5 MB, Spotify (tray menu plus MPRIS) 4.9 ms / 3.2 ms / 3.4 MB, Zen (47 pack commands)
+5.8 ms / 5.2 ms / 3.4 MB. Packs are compiled in, so only user packs cost a file read.
 
 Lazy loading was considered and dropped: fuzzy search needs every command up front,
 and fetching all 148 Xournal++ commands takes about a millisecond.

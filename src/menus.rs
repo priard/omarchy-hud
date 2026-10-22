@@ -1,6 +1,6 @@
 //! Finds an app's menus on D-Bus by PID and flattens them into commands.
 //! Sources: org.gtk.Menus (GTK menubars), org.gtk.Actions (GTK without a menubar)
-//! and com.canonical.dbusmenu (Qt/KDE).
+//! and com.canonical.dbusmenu (Qt/KDE), plus MPRIS playback controls for media players.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -10,8 +10,8 @@ use dbus::Signature;
 use dbus::arg::{ArgType, PropMap, RefArg, Variant};
 
 use crate::bus::{self, Bus, TIMEOUT};
-use crate::hypr::Focus;
-use crate::labels;
+use crate::hypr::{self, Focus};
+use crate::{labels, shortcuts};
 
 const SEP: &str = " › ";
 const GTK_MENUS: &str = "org.gtk.Menus";
@@ -19,6 +19,10 @@ const GTK_ACTIONS: &str = "org.gtk.Actions";
 const DBUSMENU: &str = "com.canonical.dbusmenu";
 const DBUS: &str = "org.freedesktop.DBus";
 const INTROSPECTABLE: &str = "org.freedesktop.DBus.Introspectable";
+const DBUS_PROPERTIES: &str = "org.freedesktop.DBus.Properties";
+const MPRIS: &str = "org.mpris.MediaPlayer2.";
+const MPRIS_PATH: &str = "/org/mpris/MediaPlayer2";
+const MPRIS_PLAYER: &str = "org.mpris.MediaPlayer2.Player";
 // Some connections of an app (worker threads, portals) never answer; once one live
 // connection has, the others get this much longer. When that leaves no commands,
 // the cut-off connections get a second, patient try.
@@ -44,6 +48,15 @@ pub enum Action {
         name: String,
         path: String,
         id: i32,
+    },
+    Mpris {
+        name: String,
+        method: &'static str,
+    },
+    /// A key chord sent to the window (see shortcuts).
+    Shortcut {
+        window: String,
+        accel: String,
     },
 }
 
@@ -74,12 +87,34 @@ pub fn activate(bus: &Bus, action: &Action) -> Result<(), String> {
                 (*id, "clicked", Variant(0i32), 0u32),
             )?;
         }
+        Action::Mpris { name, method } => {
+            bus.call(name, MPRIS_PATH, MPRIS_PLAYER, method, ())?;
+        }
+        Action::Shortcut { window, accel } => {
+            let (mods, key) = shortcuts::chord(accel).ok_or("bad shortcut")?;
+            hypr::send_shortcut(window, &mods, &key)?;
+        }
     }
     Ok(())
 }
 
 pub fn collect(bus: &Bus, pid: u32, focus: Option<Focus>) -> Vec<Command> {
-    let trees = object_trees(bus, &connections(bus, &pid_tree(pid)), Some(PROBE_GRACE));
+    let (players, names): (Vec<String>, Vec<String>) = connections(bus, &pid_tree(pid))
+        .into_iter()
+        .partition(|n| n.starts_with(MPRIS));
+    let mut commands = menu_commands(bus, &names, pid, focus);
+    for player in &players {
+        for c in mpris_commands(bus, player) {
+            if !commands.iter().any(|o| o.label == c.label) {
+                commands.push(c);
+            }
+        }
+    }
+    commands
+}
+
+fn menu_commands(bus: &Bus, names: &[String], pid: u32, focus: Option<Focus>) -> Vec<Command> {
+    let trees = object_trees(bus, names, Some(PROBE_GRACE));
     let silent: Vec<String> = trees
         .iter()
         .filter(|(_, objects)| objects.is_empty())
@@ -144,7 +179,7 @@ fn pid_tree(pid: u32) -> HashSet<u32> {
     tree
 }
 
-/// Unique bus names owned by any of the pids.
+/// Unique bus names and MPRIS player names owned by any of the pids.
 fn connections(bus: &Bus, pids: &HashSet<u32>) -> Vec<String> {
     let Ok(reply) = bus.call(DBUS, "/org/freedesktop/DBus", DBUS, "ListNames", ()) else {
         return vec![];
@@ -153,7 +188,7 @@ fn connections(bus: &Bus, pids: &HashSet<u32>) -> Vec<String> {
         .read1::<Vec<String>>()
         .unwrap_or_default()
         .into_iter()
-        .filter(|n| n.starts_with(':'))
+        .filter(|n| n.starts_with(':') || n.starts_with(MPRIS))
         .collect();
     let msgs = names
         .iter()
@@ -668,6 +703,39 @@ pub fn walk_dbusmenu(
         }
         path.pop();
     }
+}
+
+/// Playback controls the player says it supports.
+fn mpris_commands(bus: &Bus, name: &str) -> Vec<Command> {
+    let Ok(props) = bus
+        .call(name, MPRIS_PATH, DBUS_PROPERTIES, "GetAll", (MPRIS_PLAYER,))
+        .and_then(|r| r.read1::<PropMap>().map_err(|e| e.to_string()))
+    else {
+        return vec![];
+    };
+    let can = |p: &str| {
+        props
+            .get(p)
+            .and_then(|v| v.0.as_u64())
+            .is_some_and(|b| b != 0)
+    };
+    [
+        ("Media › Play/Pause", "PlayPause", can("CanPause") || can("CanPlay")),
+        ("Media › Next track", "Next", can("CanGoNext")),
+        ("Media › Previous track", "Previous", can("CanGoPrevious")),
+        ("Media › Stop", "Stop", can("CanControl")),
+    ]
+    .into_iter()
+    .filter(|(_, _, ok)| *ok)
+    .map(|(label, method, _)| Command {
+        label: label.to_string(),
+        accel: String::new(),
+        action: Action::Mpris {
+            name: name.to_string(),
+            method,
+        },
+    })
+    .collect()
 }
 
 fn dbusmenu_commands(bus: &Bus, name: &str, path: &str) -> Vec<Command> {
