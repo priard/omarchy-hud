@@ -74,7 +74,7 @@ fn run() -> Result<ExitCode, String> {
     };
     let bus = bus::Bus::session()?;
     let mut commands = menus::collect(&bus, pid, focus);
-    if let Some(window) = window {
+    if let Some(window) = &window {
         for (label, accel) in shortcuts::for_class(&window.class) {
             if !commands.iter().any(|c| c.label == label) {
                 commands.push(menus::Command {
@@ -111,7 +111,7 @@ fn run() -> Result<ExitCode, String> {
             );
             return Ok(ExitCode::FAILURE);
         }
-        None => match pick(&commands)? {
+        None => match pick(&commands, window.as_ref().and_then(hypr::rect_on_monitor))? {
             Some(label) => {
                 recent::remember(&app, &label);
                 label
@@ -127,11 +127,30 @@ fn run() -> Result<ExitCode, String> {
     Ok(ExitCode::SUCCESS)
 }
 
-/// Shows the commands in the Omarchy menu and returns the picked label.
+/// The menu plugin from dist/menu/install: Omarchy's menu plus the `anchor` field.
+const ANCHORED_MENU: &str = "omarchy-hud.menu";
+
+fn anchored_menu_installed() -> bool {
+    env::var_os("XDG_CONFIG_HOME")
+        .map(PathBuf::from)
+        .or_else(|| env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
+        .is_some_and(|c| {
+            c.join("omarchy/plugins")
+                .join(ANCHORED_MENU)
+                .join("manifest.json")
+                .exists()
+        })
+}
+
+/// Shows the commands in the Omarchy menu, centered on `anchor` (the window's rectangle on
+/// its monitor) when the anchored menu is installed, and returns the picked label.
 ///
 /// shortcut: talks to omarchy-menu-select's private payload format (Menu.qml) to skip its
 /// bash and perl setup (~45 ms); switch back to omarchy-menu-select if the payload changes.
-fn pick(commands: &[menus::Command]) -> Result<Option<String>, String> {
+fn pick(
+    commands: &[menus::Command],
+    anchor: Option<(i32, i32, i32, i32)>,
+) -> Result<Option<String>, String> {
     let dir = PathBuf::from(env::var("XDG_RUNTIME_DIR").map_err(|_| "XDG_RUNTIME_DIR is not set")?);
     let selection = dir.join(format!("omarchy-hud-{}.selection", std::process::id()));
     let done = dir.join(format!("omarchy-hud-{}.done", std::process::id()));
@@ -149,18 +168,23 @@ fn pick(commands: &[menus::Command]) -> Result<Option<String>, String> {
         })
         .map(|o| json_string(&o))
         .collect();
+    let anchor = anchor
+        .map(|(x, y, w, h)| format!(r#","anchor":{{"x":{x},"y":{y},"width":{w},"height":{h}}}"#))
+        .unwrap_or_default();
     let payload = format!(
-        r#"{{"mode":"select","prompt":"HUD","options":[{}],"multiple":false,"selected":[],"onChange":[],"changeKey":"","selectionFile":{},"doneFile":{},"width":800,"maxHeight":500}}"#,
+        r#"{{"mode":"select","prompt":"HUD","options":[{}],"multiple":false,"selected":[],"onChange":[],"changeKey":"","selectionFile":{},"doneFile":{},"width":800,"maxHeight":500{anchor}}}"#,
         options.join(","),
         json_string(&selection.to_string_lossy()),
         json_string(&done.to_string_lossy()),
     );
-    let status = Command::new("omarchy-shell")
-        .args(["shell", "summon", "omarchy.menu", &payload])
-        .stdout(std::process::Stdio::null())
-        .status()
-        .map_err(|e| format!("omarchy-shell: {e}"))?;
-    if !status.success() {
+    let summon = |plugin: &str| {
+        Command::new("omarchy-shell")
+            .args(["shell", "summon", plugin, &payload])
+            .stdout(std::process::Stdio::null())
+            .status()
+            .is_ok_and(|s| s.success())
+    };
+    if !(anchored_menu_installed() && summon(ANCHORED_MENU)) && !summon("omarchy.menu") {
         return Err("omarchy-shell is not running".into());
     }
     while !done.exists() {

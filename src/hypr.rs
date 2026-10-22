@@ -11,6 +11,10 @@ pub struct Window {
     pub pid: u32,
     pub floating: bool,
     pub stable_id: u64,
+    /// Position and size in Hyprland's logical layout coordinates.
+    pub at: (i32, i32),
+    pub size: (i32, i32),
+    pub monitor: i32,
 }
 
 /// Where the focused window sits among its app's tiled windows, in creation order.
@@ -48,7 +52,16 @@ pub fn parse_windows(text: &str) -> Vec<Window> {
                     .lines()
                     .find_map(|l| l.trim().strip_prefix(name)?.strip_prefix(": "))
             };
+            let pair = |name: &str| -> (i32, i32) {
+                field(name)
+                    .and_then(|v| v.split_once(','))
+                    .and_then(|(a, b)| Some((a.parse().ok()?, b.parse().ok()?)))
+                    .unwrap_or((0, 0))
+            };
             Some(Window {
+                at: pair("at"),
+                size: pair("size"),
+                monitor: field("monitor").and_then(|m| m.parse().ok()).unwrap_or(-1),
                 address,
                 class: field("class").unwrap_or("").to_string(),
                 pid: field("pid")?.parse().ok()?,
@@ -96,6 +109,26 @@ pub fn window(address: Option<&str>) -> Result<(Window, Option<Focus>), String> 
     Ok((windows.swap_remove(i), focus))
 }
 
+/// Top-left corner of each monitor in layout coordinates, by id, from `monitors` output.
+pub fn parse_monitor_origins(text: &str) -> Vec<(i32, (i32, i32))> {
+    text.split("Monitor ")
+        .skip(1)
+        .filter_map(|block| {
+            let id = block.split_once("(ID ")?.1.split_once(')')?.0.parse().ok()?;
+            let at = block.lines().nth(1)?.rsplit_once(" at ")?.1;
+            let (x, y) = at.trim().split_once('x')?;
+            Some((id, (x.parse().ok()?, y.parse().ok()?)))
+        })
+        .collect()
+}
+
+/// The window's rectangle relative to its monitor: x, y, width, height.
+pub fn rect_on_monitor(window: &Window) -> Option<(i32, i32, i32, i32)> {
+    let origins = parse_monitor_origins(&request("monitors").ok()?);
+    let (_, (mx, my)) = origins.into_iter().find(|(id, _)| *id == window.monitor)?;
+    Some((window.at.0 - mx, window.at.1 - my, window.size.0, window.size.1))
+}
+
 fn dispatch(call: &str) -> Result<(), String> {
     match request(&format!("dispatch {call}"))?.trim() {
         "ok" | "" => Ok(()),
@@ -119,6 +152,9 @@ mod tests {
 
     const CLIENTS: &str = "Window 55e578846200 -> Bez tytułu 1 — LibreOffice Writer:
 \tclass: libreoffice-writer
+\tat: 2567,38
+\tsize: 2541,1319
+\tmonitor: 1
 \tfloating: 0
 \tpid: 42
 \tstableID: 18000101
@@ -145,6 +181,8 @@ Window 55e578605800 -> Mattermost:
         assert_eq!(windows.len(), 4);
         assert_eq!(windows[0].class, "libreoffice-writer");
         assert_eq!(windows[1].class, "");
+        assert_eq!((windows[0].at, windows[0].size, windows[0].monitor), ((2567, 38), (2541, 1319), 1));
+        assert_eq!(windows[1].monitor, -1);
         assert_eq!(
             focus_of(&windows, "55e5787d28f0"),
             Some(Focus { index: 1, count: 2 })
@@ -158,5 +196,11 @@ Window 55e578605800 -> Mattermost:
             focus_of(&windows, "55e578605800"),
             Some(Focus { index: 0, count: 1 })
         );
+    }
+
+    #[test]
+    fn monitor_origins() {
+        let text = "Monitor DP-1 (ID 1):\n\t7680x2160@119.99700 at 0x0\n\tscale: 1.5\n\nMonitor HDMI-A-1 (ID 2):\n\t1920x1080@60.00000 at 5120x-200\n";
+        assert_eq!(parse_monitor_origins(text), [(1, (0, 0)), (2, (5120, -200))]);
     }
 }

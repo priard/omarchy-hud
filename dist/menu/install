@@ -1,0 +1,39 @@
+#!/bin/bash
+# Installs omarchy-hud.menu: Omarchy's own menu plus menu-anchor.patch, which lets the
+# HUD open over the window it is for. Only the HUD summons it; Omarchy's menu stays as is.
+# Run again after an Omarchy update to pick up its menu changes. Remove with --uninstall.
+set -euo pipefail
+
+here=$(cd "$(dirname "$0")" && pwd)
+source_dir=${OMARCHY_PATH:-/usr/share/omarchy}/shell/plugins/menu
+target=$HOME/.config/omarchy/plugins/omarchy-hud.menu
+shell_json=$HOME/.config/omarchy/shell.json
+id=omarchy-hud.menu
+
+set_enabled() {
+  [[ -f $shell_json ]] || return 0
+  cp "$shell_json" "$shell_json.bak.omarchy-hud"
+  jq --arg id "$id" --argjson on "$1" '
+    .plugins = ([(.plugins // [])[] | select(.id != $id)] + (if $on then [{id: $id}] else [] end))
+  ' "$shell_json" >"$shell_json.tmp"
+  mv "$shell_json.tmp" "$shell_json"
+}
+
+if [[ ${1:-} == --uninstall ]]; then
+  set_enabled false
+  rm -rf "$target"
+  echo "omarchy-hud.menu removed; the HUD falls back to Omarchy's menu"
+  exit 0
+fi
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+cp "$source_dir/Menu.qml" "$source_dir/MenuModel.js" "$work/"
+if ! patch --quiet --directory="$work" --strip=4 <"$here/menu-anchor.patch"; then
+  echo "menu-anchor.patch does not apply to this Omarchy's menu; the HUD keeps using Omarchy's menu" >&2
+  exit 1
+fi
+mkdir -p "$target"
+cp "$work/Menu.qml" "$work/MenuModel.js" "$here/manifest.json" "$target/"
+set_enabled true
+echo "omarchy-hud.menu installed in $target"

@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "omarchy-hud.menu",
+  "name": "omarchy-hud menu",
+  "version": "1.0.0",
+  "author": "omarchy-hud",
+  "description": "Omarchy's menu with the anchor field, so the HUD opens over the window it is for",
+  "kinds": [
+    "menu"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "menu": "Menu.qml"
+  }
+}
